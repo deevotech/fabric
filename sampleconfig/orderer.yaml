@@ -73,7 +73,7 @@ General:
     # Genesis file: The file containing the genesis block to use when
     # initializing the orderer system channel and GenesisMethod is set to
     # "file". Ignored if GenesisMethod is set to "provisional".
-    GenesisFile: ../genesisblock
+    GenesisFile: /etc/bftsmart-orderer/config/genesisblock
 
     # LocalMSPDir is where to find the private crypto material needed by the
     # orderer. It is set relative here as a default for dev environments but

@@ -29,10 +29,11 @@ import (
 )
 
 var (
-	blocksReceived uint64  = 0                               //JCS: block counter and checker
-	N              uint32  = 4                               //JCS: number of ordering nodes
-	F              uint32  = 1                               //JCS: number of faults
-	Q              float32 = ((float32(N) + float32(F)) / 2) //JCS: quorum size
+	verify         bool    = false                           //JCS: verify signatures?
+	blocksReceived int64   = 0                               //JCS: block counter and checker
+	N              int64   = 4                               //JCS: number of ordering nodes
+	F              int64   = 1                               //JCS: number of faults
+	Q              float64 = ((float64(N) + float64(F)) / 2) //JCS: quorum size
 
 	oldest  = &ab.SeekPosition{Type: &ab.SeekPosition_Oldest{Oldest: &ab.SeekOldest{}}}
 	newest  = &ab.SeekPosition{Type: &ab.SeekPosition_Newest{Newest: &ab.SeekNewest{}}}
@@ -95,10 +96,10 @@ func (r *deliverClient) readUntilClose() {
 				fmt.Println("Received block: ")
 				err := protolator.DeepMarshalJSON(os.Stdout, t.Block)
 				if err != nil {
-					fmt.Printf("  Error pretty printing block: %s", err)
+					fmt.Printf("  Error pretty printing block: %s\n", err)
 				}
 
-				if t.Block.Header.Number > 0 { //JCS: check orderer signatures
+				if t.Block.Header.Number > 0 && verify { //JCS: check orderer signatures
 
 					meta, _ := utils.UnmarshalMetadata(t.Block.Metadata.Metadata[cb.BlockMetadataIndex_SIGNATURES])
 
@@ -153,7 +154,15 @@ func main() {
 		"Acceptable values:"+
 		"-2 (or -1) to start from oldest (or newest) and keep at it indefinitely."+
 		"N >= 0 to fetch block N only.")
+
+	//JCS: my new flags
+	flag.Int64Var(&N, "n", N, "The total number of ordering nodes operating in the system.")
+	flag.Int64Var(&F, "f", F, "The number of Byzantine ordering nodes that are being tolerated.")
+	flag.BoolVar(&verify, "verify", verify, "Verify block signatures.")
+
 	flag.Parse()
+
+	Q = ((float64(N) + float64(F)) / 2)
 
 	if seek < -2 {
 		fmt.Println("Wrong seek value.")
@@ -196,7 +205,7 @@ func validateSignatures(meta *cb.Metadata, block *cb.Block) { //JCS: function to
 	}
 
 	des := mspmgmt.GetIdentityDeserializer("")
-	validSigs := uint32(0)
+	validSigs := int64(0)
 
 	for i, sig := range meta.Signatures {
 
@@ -219,8 +228,8 @@ func validateSignatures(meta *cb.Metadata, block *cb.Block) { //JCS: function to
 			continue
 		}
 
-		fmt.Printf("Signature #%d\n: ", i)
-		fmt.Printf("MSPID: %d\n", ident.GetMSPIdentifier())
+		fmt.Printf("Signature: #%d\n", i)
+		fmt.Printf("MSPID: %s\n", ident.GetMSPIdentifier())
 		fmt.Printf("Bytes: %x\n", sig.Signature)
 
 		err = ident.Verify(bytes, sig.Signature)
@@ -231,15 +240,10 @@ func validateSignatures(meta *cb.Metadata, block *cb.Block) { //JCS: function to
 
 		validSigs++
 
-		if validSigs > F {
-			fmt.Printf("Block #%d contains enough valid signatures!\n", block.Header.Number)
-			return
-		}
-
 	}
 
 	switch {
-	case float32(validSigs) > Q:
+	case float64(validSigs) > Q:
 		{
 			fmt.Printf("Block #%d contains a quorum of valid signatures!\n", block.Header.Number)
 		}
