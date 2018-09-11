@@ -1,6 +1,11 @@
 Prerequisites
 =============
 
+Before we begin, if you haven't already done so, you may wish to check that
+you have all the prerequisites below installed on the platform(s)
+on which you'll be developing blockchain applications and/or operating
+Hyperledger Fabric.
+
 Install cURL
 ------------
 
@@ -18,7 +23,7 @@ Docker and Docker Compose
 You will need the following installed on the platform on which you will be
 operating, or developing on (or for), Hyperledger Fabric:
 
-  - MacOSX, \*nix, or Windows 10: `Docker <https://www.docker.com/products/overview>`__
+  - MacOSX, \*nix, or Windows 10: `Docker <https://www.docker.com/get-docker>`__
     Docker version 17.06.2-ce or greater is required.
   - Older versions of Windows: `Docker
     Toolbox <https://docs.docker.com/toolbox/toolbox_install_windows/>`__ -
@@ -49,12 +54,10 @@ following command from a terminal prompt:
 Go Programming Language
 -----------------------
 
-Hyperledger Fabric uses the Go programming language 1.9.x for many of its
+Hyperledger Fabric uses the Go Programming Language for many of its
 components.
 
-.. note:: Building with Go version 1.8.x is not supported
-
-  - `Go <https://golang.org/>`__ - version 1.9.x
+  - `Go <https://golang.org/dl/>`__ version 1.10.x is required.
 
 Given that we will be writing chaincode programs in Go, there are two
 environment variables you will need to set properly; you can make these
@@ -128,6 +131,8 @@ Check your version(s):
 
   python --version
 
+.. _windows-extras:
+
 Windows extras
 --------------
 
@@ -143,7 +148,7 @@ difficulties with operations involving the ``make`` and ``docker``
 commands.
 
 On Windows 10 you should use the native Docker distribution and you
-may use the Windows PowerShell. However, for the :ref:`binaries`
+may use the Windows PowerShell. However, for the ``binaries``
 command to succeed you will still need to have the ``uname`` command
 available. You can get it as part of Git but beware that only the
 64bit version is supported.

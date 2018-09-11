@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package privacyenabledstate
 
 import (
+	"fmt"
+
 	"github.com/hyperledger/fabric/core/ledger/cceventmgmt"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
@@ -35,6 +37,13 @@ type DB interface {
 	GetPrivateDataRangeScanIterator(namespace, collection, startKey, endKey string) (statedb.ResultsIterator, error)
 	ExecuteQueryOnPrivateData(namespace, collection, query string) (statedb.ResultsIterator, error)
 	ApplyPrivacyAwareUpdates(updates *UpdateBatch, height *version.Height) error
+}
+
+// PvtdataCompositeKey encloses Namespace, CollectionName and Key components
+type PvtdataCompositeKey struct {
+	Namespace      string
+	CollectionName string
+	Key            string
 }
 
 // HashedCompositeKey encloses Namespace, CollectionName and KeyHash components
@@ -105,7 +114,7 @@ func (b UpdateMap) Put(ns, coll, key string, value []byte, version *version.Heig
 	b.getOrCreateNsBatch(ns).Put(coll, key, value, version)
 }
 
-// Delete removes the entry from the batch for a given combination of namespace and collection name
+// Delete adds a delete marker in the batch for a given combination of namespace and collection name
 func (b UpdateMap) Delete(ns, coll, key string, version *version.Height) {
 	b.getOrCreateNsBatch(ns).Delete(coll, key, version)
 }
@@ -117,6 +126,15 @@ func (b UpdateMap) Get(ns, coll, key string) *statedb.VersionedValue {
 		return nil
 	}
 	return nsPvtBatch.Get(coll, key)
+}
+
+// Contains returns true if the given <ns,coll,key> tuple is present in the batch
+func (b UpdateMap) Contains(ns, coll, key string) bool {
+	nsBatch, ok := b[ns]
+	if !ok {
+		return false
+	}
+	return nsBatch.Exists(coll, key)
 }
 
 func (nsb nsBatch) GetCollectionNames() []string {
@@ -134,11 +152,7 @@ func (b UpdateMap) getOrCreateNsBatch(ns string) nsBatch {
 
 // Contains returns true if the given <ns,coll,keyHash> tuple is present in the batch
 func (h HashedUpdateBatch) Contains(ns, coll string, keyHash []byte) bool {
-	nsBatch, ok := h.UpdateMap[ns]
-	if !ok {
-		return false
-	}
-	return nsBatch.Exists(coll, string(keyHash))
+	return h.UpdateMap.Contains(ns, coll, string(keyHash))
 }
 
 // Put overrides the function in UpdateMap for allowing the key to be a []byte instead of a string
@@ -149,4 +163,35 @@ func (h HashedUpdateBatch) Put(ns, coll string, key []byte, value []byte, versio
 // Delete overrides the function in UpdateMap for allowing the key to be a []byte instead of a string
 func (h HashedUpdateBatch) Delete(ns, coll string, key []byte, version *version.Height) {
 	h.UpdateMap.Delete(ns, coll, string(key), version)
+}
+
+// ToCompositeKeyMap rearranges the update batch data in the form of a single map
+func (h HashedUpdateBatch) ToCompositeKeyMap() map[HashedCompositeKey]*statedb.VersionedValue {
+	m := make(map[HashedCompositeKey]*statedb.VersionedValue)
+	for ns, nsBatch := range h.UpdateMap {
+		for _, coll := range nsBatch.GetCollectionNames() {
+			for key, vv := range nsBatch.GetUpdates(coll) {
+				m[HashedCompositeKey{ns, coll, key}] = vv
+			}
+		}
+	}
+	return m
+}
+
+// ToCompositeKeyMap rearranges the update batch data in the form of a single map
+func (p PvtUpdateBatch) ToCompositeKeyMap() map[PvtdataCompositeKey]*statedb.VersionedValue {
+	m := make(map[PvtdataCompositeKey]*statedb.VersionedValue)
+	for ns, nsBatch := range p.UpdateMap {
+		for _, coll := range nsBatch.GetCollectionNames() {
+			for key, vv := range nsBatch.GetUpdates(coll) {
+				m[PvtdataCompositeKey{ns, coll, key}] = vv
+			}
+		}
+	}
+	return m
+}
+
+// String returns a print friendly form of HashedCompositeKey
+func (hck *HashedCompositeKey) String() string {
+	return fmt.Sprintf("ns=%s, collection=%s, keyHash=%x", hck.Namespace, hck.CollectionName, hck.KeyHash)
 }

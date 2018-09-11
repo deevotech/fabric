@@ -88,7 +88,7 @@ To create a signed chaincode package, use the following command:
 
 .. code:: bash
 
-    peer chaincode package -n mycc -p github.com/hyperledger/fabric/examples/chaincode/go/chaincode_example02 -v 0 -s -S -i "AND('OrgA.admin')" ccpack.out
+    peer chaincode package -n mycc -p github.com/hyperledger/fabric/examples/chaincode/go/example02/cmd -v 0 -s -S -i "AND('OrgA.admin')" ccpack.out
 
 The ``-s`` option creates a package that can be signed by multiple owners as
 opposed to simply creating a raw CDS. When ``-s`` is specified, the ``-S``
@@ -229,11 +229,11 @@ the state with ``john`` and ``0``, the command would look like the following:
 
 .. code:: bash
 
-    peer chaincode instantiate -n sacc -v 1.0 -c '{"Args":["john","0"]}' -P "OR ('Org1.member','Org2.member')"
+    peer chaincode instantiate -n sacc -v 1.0 -c '{"Args":["john","0"]}' -P "AND ('Org1.member','Org2.member')"
 
 .. note:: Note the endorsement policy (CLI uses polish notation), which requires an
-          endorsement from either member of Org1 or Org2 for all transactions to
-          **sacc**. That is, either Org1 or Org2 must sign the
+          endorsement from both a member of Org1 and Org2 for all transactions to
+          **sacc**. That is, both Org1 and Org2 must sign the
           result of executing the `Invoke` on **sacc** for the transactions to
           be valid.
 
@@ -372,8 +372,7 @@ and **upgrade** do not apply to system chaincodes.
 The purpose of system chaincode is to shortcut gRPC communication cost between
 peer and chaincode, and tradeoff the flexibility in management. For example, a
 system chaincode can only be upgraded with the peer binary. It must also
-register with a `fixed set of parameters
-<https://github.com/hyperledger/fabric/blob/master/core/scc/importsysccs.go>`_
+register with a `fixed set of parameters <https://github.com/hyperledger/fabric/blob/master/core/scc/importsysccs.go>`_
 compiled in and doesn't have endorsement policies or endorsement policy
 functionality.
 
@@ -390,19 +389,13 @@ The current list of system chaincodes:
 3. `QSCC <https://github.com/hyperledger/fabric/tree/master/core/scc/qscc>`_
    Query system chaincode provides ledger query APIs such as getting blocks and
    transactions.
-4. `ESCC <https://github.com/hyperledger/fabric/tree/master/core/scc/escc>`_
-   Endorsement system chaincode handles endorsement by signing the transaction
-   proposal response.
-5. `VSCC <https://github.com/hyperledger/fabric/tree/master/core/scc/vscc>`_
-   Validation system chaincode handles the transaction validation, including
-   checking endorsement policy and multiversioning concurrency control.
 
-Care must be taken when modifying or replacing these system chaincodes,
-especially LSCC, ESCC and VSCC since they are in the main transaction execution
-path. It is worth noting that as VSCC validates a block before committing it to
-the ledger, it is important that all peers in the channel compute the same
-validation to avoid ledger divergence (non-determinism). So special care is
-needed if VSCC is modified or replaced.
+The former system chaincodes for endorsement and validation have been replaced
+by the pluggable endorsement and validation function as described by the
+:doc:`pluggable_endorsement_and_validation` documentation.
+
+Extreme care must be taken when modifying or replacing these system chaincodes,
+especially LSCC.
 
 .. Licensed under Creative Commons Attribution 4.0 International License
    https://creativecommons.org/licenses/by/4.0/

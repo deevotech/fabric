@@ -55,10 +55,12 @@ func update(cmd *cobra.Command, args []string, cf *ChannelCmdFactory) error {
 	if channelTxFile == "" {
 		return InvalidCreateTx("No configtx file name supplied")
 	}
+	// Parsing of the command line is done so silence cmd usage
+	cmd.SilenceUsage = true
 
 	var err error
 	if cf == nil {
-		cf, err = InitCmdFactory(EndorserNotRequired, OrdererRequired)
+		cf, err = InitCmdFactory(EndorserNotRequired, PeerDeliverNotRequired, OrdererRequired)
 		if err != nil {
 			return err
 		}

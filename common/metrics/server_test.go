@@ -9,11 +9,11 @@ package metrics
 import (
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric/core/config"
+	"github.com/hyperledger/fabric/core/config/configtest"
+	. "github.com/onsi/gomega"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
@@ -25,7 +25,7 @@ func TestStartSuccessStatsd(t *testing.T) {
 		Reporter: statsdReporterType,
 		Interval: 1 * time.Second,
 		StatsdReporterOpts: StatsdReporterOpts{
-			Address:       "127.0.0.1:8125",
+			Address:       "127.0.0.1:0",
 			FlushInterval: 2 * time.Second,
 			FlushBytes:    512,
 		}}
@@ -43,7 +43,7 @@ func TestStartSuccessProm(t *testing.T) {
 		Reporter: promReporterType,
 		Interval: 1 * time.Second,
 		PromReporterOpts: PromReporterOpts{
-			ListenAddress: "127.0.0.1:8081",
+			ListenAddress: "127.0.0.1:0",
 		}}
 	s, err := create(opts)
 	go s.Start()
@@ -99,7 +99,7 @@ func TestStartStatsdInvalidFlushInterval(t *testing.T) {
 		Interval: 1 * time.Second,
 		Reporter: statsdReporterType,
 		StatsdReporterOpts: StatsdReporterOpts{
-			Address:       "127.0.0.1:8125",
+			Address:       "127.0.0.1:0",
 			FlushInterval: 0,
 			FlushBytes:    512,
 		},
@@ -131,7 +131,7 @@ func TestStartStatsdInvalidFlushBytes(t *testing.T) {
 		Interval: 1 * time.Second,
 		Reporter: statsdReporterType,
 		StatsdReporterOpts: StatsdReporterOpts{
-			Address:       "127.0.0.1:8125",
+			Address:       "127.0.0.1:0",
 			FlushInterval: 2 * time.Second,
 			FlushBytes:    0,
 		},
@@ -155,21 +155,21 @@ func TestStartInvalidReporter(t *testing.T) {
 
 func TestStartAndClose(t *testing.T) {
 	t.Parallel()
+	gt := NewGomegaWithT(t)
 	defer Shutdown()
 	opts := Opts{
 		Enabled:  true,
 		Reporter: statsdReporterType,
 		Interval: 1 * time.Second,
 		StatsdReporterOpts: StatsdReporterOpts{
-			Address:       "127.0.0.1:8125",
+			Address:       "127.0.0.1:0",
 			FlushInterval: 2 * time.Second,
 			FlushBytes:    512,
 		}}
 	Init(opts)
-	go Start()
-	time.Sleep(1 * time.Second)
 	assert.NotNil(t, RootScope)
-	assert.Equal(t, uint32(1), atomic.LoadUint32(&started))
+	go Start()
+	gt.Eventually(isRunning).Should(BeTrue())
 }
 
 func TestNoOpScopeMetrics(t *testing.T) {
@@ -230,7 +230,7 @@ func setupTestConfig() {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
-	err := config.AddDevConfigPath(nil)
+	err := configtest.AddDevConfigPath(nil)
 	if err != nil {
 		panic(fmt.Errorf("Fatal error adding dev dir: %s \n", err))
 	}

@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric/common/ledger/testutil"
+	"github.com/hyperledger/fabric/core/common/ccprovider"
+	"github.com/hyperledger/fabric/core/ledger/cceventmgmt"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
 	"github.com/hyperledger/fabric/core/ledger/util"
@@ -128,8 +130,6 @@ func testDB(t *testing.T, env TestEnv) {
 	vv, err = db.GetValueHash("ns1", "coll1", util.ComputeStringHash("key1"))
 	assert.Nil(t, vv)
 }
-
-//TODO add tests for functions GetPrivateStateMultipleKeys and GetPrivateStateRangeScanIterator
 
 func TestGetStateMultipleKeys(t *testing.T) {
 	for _, env := range testEnvs {
@@ -385,6 +385,113 @@ func testQueryItr(t *testing.T, itr statedb.ResultsIterator, expectedKeys []stri
 
 func testKey(i int) string {
 	return fmt.Sprintf("key%d", i)
+}
+
+func TestCompositeKeyMap(t *testing.T) {
+	b := NewPvtUpdateBatch()
+	b.Put("ns1", "coll1", "key1", []byte("testVal1"), nil)
+	b.Delete("ns1", "coll2", "key2", nil)
+	b.Put("ns2", "coll1", "key1", []byte("testVal3"), nil)
+	b.Put("ns2", "coll2", "key2", []byte("testVal4"), nil)
+	m := b.ToCompositeKeyMap()
+	testutil.AssertEquals(t, len(m), 4)
+	vv, ok := m[PvtdataCompositeKey{"ns1", "coll1", "key1"}]
+	testutil.AssertEquals(t, ok, true)
+	testutil.AssertEquals(t, vv.Value, []byte("testVal1"))
+	vv, ok = m[PvtdataCompositeKey{"ns1", "coll2", "key2"}]
+	testutil.AssertNil(t, vv.Value)
+	testutil.AssertEquals(t, ok, true)
+	_, ok = m[PvtdataCompositeKey{"ns2", "coll1", "key1"}]
+	testutil.AssertEquals(t, ok, true)
+	_, ok = m[PvtdataCompositeKey{"ns2", "coll2", "key2"}]
+	testutil.AssertEquals(t, ok, true)
+	_, ok = m[PvtdataCompositeKey{"ns2", "coll1", "key8888"}]
+	testutil.AssertEquals(t, ok, false)
+}
+
+func TestHandleChainCodeDeployOnCouchDB(t *testing.T) {
+	for _, env := range testEnvs {
+		_, ok := env.(*CouchDBCommonStorageTestEnv)
+		if !ok {
+			continue
+		}
+		t.Run(env.GetName(), func(t *testing.T) {
+			testHandleChainCodeDeploy(t, env)
+		})
+	}
+}
+
+func testHandleChainCodeDeploy(t *testing.T, env TestEnv) {
+	env.Init(t)
+	defer env.Cleanup()
+	db := env.GetDBHandle("test-handle-chaincode-deploy")
+
+	chaincodeDef := &cceventmgmt.ChaincodeDefinition{Name: "ns1", Hash: nil, Version: ""}
+
+	commonStorageDB := db.(*CommonStorageDB)
+
+	// Test indexes for side databases
+	dbArtifactsTarBytes := testutil.CreateTarBytesForTest(
+		[]*testutil.TarFileEntry{
+			{"META-INF/statedb/couchdb/indexes/indexColorSortName.json", `{"index":{"fields":[{"color":"desc"}]},"ddoc":"indexColorSortName","name":"indexColorSortName","type":"json"}`},
+			{"META-INF/statedb/couchdb/indexes/indexSizeSortName.json", `{"index":{"fields":[{"size":"desc"}]},"ddoc":"indexSizeSortName","name":"indexSizeSortName","type":"json"}`},
+			{"META-INF/statedb/couchdb/collections/collectionMarbles/indexes/indexCollMarbles.json", `{"index":{"fields":["docType","owner"]},"ddoc":"indexCollectionMarbles", "name":"indexCollectionMarbles","type":"json"}`},
+			{"META-INF/statedb/couchdb/collections/collectionMarblesPrivateDetails/indexes/indexCollPrivDetails.json", `{"index":{"fields":["docType","price"]},"ddoc":"indexPrivateDetails", "name":"indexPrivateDetails","type":"json"}`},
+		},
+	)
+
+	// Test the retrieveIndexArtifacts method
+	fileEntries, err := ccprovider.ExtractFileEntries(dbArtifactsTarBytes, "couchdb")
+	assert.NoError(t, err)
+
+	// There should be 3 entries
+	assert.Equal(t, 3, len(fileEntries))
+
+	// There should be 2 entries for main
+	assert.Equal(t, 2, len(fileEntries["META-INF/statedb/couchdb/indexes"]))
+
+	// There should be 1 entry for collectionMarbles
+	assert.Equal(t, 1, len(fileEntries["META-INF/statedb/couchdb/collections/collectionMarbles/indexes"]))
+
+	// Verify the content of the array item
+	expectedJSON := []byte(`{"index":{"fields":["docType","owner"]},"ddoc":"indexCollectionMarbles", "name":"indexCollectionMarbles","type":"json"}`)
+	actualJSON := fileEntries["META-INF/statedb/couchdb/collections/collectionMarbles/indexes"][0].FileContent
+	assert.Equal(t, expectedJSON, actualJSON)
+
+	err = commonStorageDB.HandleChaincodeDeploy(chaincodeDef, dbArtifactsTarBytes)
+	assert.NoError(t, err)
+
+	//Test HandleChaincodeDefinition with a nil tar file
+	err = commonStorageDB.HandleChaincodeDeploy(chaincodeDef, nil)
+	testutil.AssertNoError(t, err, "")
+
+	//Test HandleChaincodeDefinition with a bad tar file
+	err = commonStorageDB.HandleChaincodeDeploy(chaincodeDef, []byte(`This is a really bad tar file`))
+	testutil.AssertNoError(t, err, "Error should not have been thrown for a bad tar file")
+
+	//Test HandleChaincodeDefinition with a nil chaincodeDef
+	err = commonStorageDB.HandleChaincodeDeploy(nil, dbArtifactsTarBytes)
+	testutil.AssertError(t, err, "Error should have been thrown for a nil chaincodeDefinition")
+
+	// Create a tar file for test with 2 index definitions - one of them being errorneous
+	badSyntaxFileContent := `{"index":{"fields": This is a bad json}`
+	dbArtifactsTarBytes = testutil.CreateTarBytesForTest(
+		[]*testutil.TarFileEntry{
+			{"META-INF/statedb/couchdb/indexes/indexSizeSortName.json", `{"index":{"fields":[{"size":"desc"}]},"ddoc":"indexSizeSortName","name":"indexSizeSortName","type":"json"}`},
+			{"META-INF/statedb/couchdb/indexes/badSyntax.json", badSyntaxFileContent},
+		},
+	)
+
+	// Test the retrieveIndexArtifacts method
+	fileEntries, err = ccprovider.ExtractFileEntries(dbArtifactsTarBytes, "couchdb")
+	assert.NoError(t, err)
+
+	// There should be 1 entry
+	assert.Equal(t, 1, len(fileEntries))
+
+	err = commonStorageDB.HandleChaincodeDeploy(chaincodeDef, dbArtifactsTarBytes)
+	assert.NoError(t, err)
+
 }
 
 func putPvtUpdates(t *testing.T, updates *UpdateBatch, ns, coll, key string, value []byte, ver *version.Height) {

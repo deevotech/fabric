@@ -5,7 +5,8 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric/common/channelconfig"
-	"github.com/hyperledger/fabric/common/resourcesconfig"
+	"github.com/hyperledger/fabric/core/common/ccprovider"
+	endorser_test "github.com/hyperledger/fabric/core/endorser"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/protos/common"
 	pb "github.com/hyperledger/fabric/protos/peer"
@@ -13,6 +14,30 @@ import (
 )
 
 type Support struct {
+	SignStub        func(message []byte) ([]byte, error)
+	signMutex       sync.RWMutex
+	signArgsForCall []struct {
+		message []byte
+	}
+	signReturns struct {
+		result1 []byte
+		result2 error
+	}
+	signReturnsOnCall map[int]struct {
+		result1 []byte
+		result2 error
+	}
+	SerializeStub        func() ([]byte, error)
+	serializeMutex       sync.RWMutex
+	serializeArgsForCall []struct{}
+	serializeReturns     struct {
+		result1 []byte
+		result2 error
+	}
+	serializeReturnsOnCall map[int]struct {
+		result1 []byte
+		result2 error
+	}
 	IsSysCCAndNotInvokableExternalStub        func(name string) bool
 	isSysCCAndNotInvokableExternalMutex       sync.RWMutex
 	isSysCCAndNotInvokableExternalArgsForCall []struct {
@@ -76,7 +101,7 @@ type Support struct {
 	isSysCCReturnsOnCall map[int]struct {
 		result1 bool
 	}
-	ExecuteStub        func(ctxt context.Context, cid, name, version, txid string, syscc bool, signedProp *pb.SignedProposal, prop *pb.Proposal, spec interface{}) (*pb.Response, *pb.ChaincodeEvent, error)
+	ExecuteStub        func(ctxt context.Context, cid, name, version, txid string, syscc bool, signedProp *pb.SignedProposal, prop *pb.Proposal, spec ccprovider.ChaincodeSpecGetter) (*pb.Response, *pb.ChaincodeEvent, error)
 	executeMutex       sync.RWMutex
 	executeArgsForCall []struct {
 		ctxt       context.Context
@@ -87,7 +112,7 @@ type Support struct {
 		syscc      bool
 		signedProp *pb.SignedProposal
 		prop       *pb.Proposal
-		spec       interface{}
+		spec       ccprovider.ChaincodeSpecGetter
 	}
 	executeReturns struct {
 		result1 *pb.Response
@@ -99,7 +124,7 @@ type Support struct {
 		result2 *pb.ChaincodeEvent
 		result3 error
 	}
-	GetChaincodeDefinitionStub        func(ctx context.Context, chainID string, txid string, signedProp *pb.SignedProposal, prop *pb.Proposal, chaincodeID string, txsim ledger.TxSimulator) (resourcesconfig.ChaincodeDefinition, error)
+	GetChaincodeDefinitionStub        func(ctx context.Context, chainID string, txid string, signedProp *pb.SignedProposal, prop *pb.Proposal, chaincodeID string, txsim ledger.TxSimulator) (ccprovider.ChaincodeDefinition, error)
 	getChaincodeDefinitionMutex       sync.RWMutex
 	getChaincodeDefinitionArgsForCall []struct {
 		ctx         context.Context
@@ -111,11 +136,11 @@ type Support struct {
 		txsim       ledger.TxSimulator
 	}
 	getChaincodeDefinitionReturns struct {
-		result1 resourcesconfig.ChaincodeDefinition
+		result1 ccprovider.ChaincodeDefinition
 		result2 error
 	}
 	getChaincodeDefinitionReturnsOnCall map[int]struct {
-		result1 resourcesconfig.ChaincodeDefinition
+		result1 ccprovider.ChaincodeDefinition
 		result2 error
 	}
 	CheckACLStub        func(signedProp *pb.SignedProposal, chdr *common.ChannelHeader, shdr *common.SignatureHeader, hdrext *pb.ChaincodeHeaderExtension) error
@@ -145,12 +170,12 @@ type Support struct {
 		result1 bool
 		result2 error
 	}
-	CheckInstantiationPolicyStub        func(name, version string, cd resourcesconfig.ChaincodeDefinition) error
+	CheckInstantiationPolicyStub        func(name, version string, cd ccprovider.ChaincodeDefinition) error
 	checkInstantiationPolicyMutex       sync.RWMutex
 	checkInstantiationPolicyArgsForCall []struct {
 		name    string
 		version string
-		cd      resourcesconfig.ChaincodeDefinition
+		cd      ccprovider.ChaincodeDefinition
 	}
 	checkInstantiationPolicyReturns struct {
 		result1 error
@@ -184,8 +209,146 @@ type Support struct {
 		result1 channelconfig.Application
 		result2 bool
 	}
+	NewQueryCreatorStub        func(channel string) (endorser_test.QueryCreator, error)
+	newQueryCreatorMutex       sync.RWMutex
+	newQueryCreatorArgsForCall []struct {
+		channel string
+	}
+	newQueryCreatorReturns struct {
+		result1 endorser_test.QueryCreator
+		result2 error
+	}
+	newQueryCreatorReturnsOnCall map[int]struct {
+		result1 endorser_test.QueryCreator
+		result2 error
+	}
+	EndorseWithPluginStub        func(ctx endorser_test.Context) (*pb.ProposalResponse, error)
+	endorseWithPluginMutex       sync.RWMutex
+	endorseWithPluginArgsForCall []struct {
+		ctx endorser_test.Context
+	}
+	endorseWithPluginReturns struct {
+		result1 *pb.ProposalResponse
+		result2 error
+	}
+	endorseWithPluginReturnsOnCall map[int]struct {
+		result1 *pb.ProposalResponse
+		result2 error
+	}
+	GetLedgerHeightStub        func(channelID string) (uint64, error)
+	getLedgerHeightMutex       sync.RWMutex
+	getLedgerHeightArgsForCall []struct {
+		channelID string
+	}
+	getLedgerHeightReturns struct {
+		result1 uint64
+		result2 error
+	}
+	getLedgerHeightReturnsOnCall map[int]struct {
+		result1 uint64
+		result2 error
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
+}
+
+func (fake *Support) Sign(message []byte) ([]byte, error) {
+	var messageCopy []byte
+	if message != nil {
+		messageCopy = make([]byte, len(message))
+		copy(messageCopy, message)
+	}
+	fake.signMutex.Lock()
+	ret, specificReturn := fake.signReturnsOnCall[len(fake.signArgsForCall)]
+	fake.signArgsForCall = append(fake.signArgsForCall, struct {
+		message []byte
+	}{messageCopy})
+	fake.recordInvocation("Sign", []interface{}{messageCopy})
+	fake.signMutex.Unlock()
+	if fake.SignStub != nil {
+		return fake.SignStub(message)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fake.signReturns.result1, fake.signReturns.result2
+}
+
+func (fake *Support) SignCallCount() int {
+	fake.signMutex.RLock()
+	defer fake.signMutex.RUnlock()
+	return len(fake.signArgsForCall)
+}
+
+func (fake *Support) SignArgsForCall(i int) []byte {
+	fake.signMutex.RLock()
+	defer fake.signMutex.RUnlock()
+	return fake.signArgsForCall[i].message
+}
+
+func (fake *Support) SignReturns(result1 []byte, result2 error) {
+	fake.SignStub = nil
+	fake.signReturns = struct {
+		result1 []byte
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Support) SignReturnsOnCall(i int, result1 []byte, result2 error) {
+	fake.SignStub = nil
+	if fake.signReturnsOnCall == nil {
+		fake.signReturnsOnCall = make(map[int]struct {
+			result1 []byte
+			result2 error
+		})
+	}
+	fake.signReturnsOnCall[i] = struct {
+		result1 []byte
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Support) Serialize() ([]byte, error) {
+	fake.serializeMutex.Lock()
+	ret, specificReturn := fake.serializeReturnsOnCall[len(fake.serializeArgsForCall)]
+	fake.serializeArgsForCall = append(fake.serializeArgsForCall, struct{}{})
+	fake.recordInvocation("Serialize", []interface{}{})
+	fake.serializeMutex.Unlock()
+	if fake.SerializeStub != nil {
+		return fake.SerializeStub()
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fake.serializeReturns.result1, fake.serializeReturns.result2
+}
+
+func (fake *Support) SerializeCallCount() int {
+	fake.serializeMutex.RLock()
+	defer fake.serializeMutex.RUnlock()
+	return len(fake.serializeArgsForCall)
+}
+
+func (fake *Support) SerializeReturns(result1 []byte, result2 error) {
+	fake.SerializeStub = nil
+	fake.serializeReturns = struct {
+		result1 []byte
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Support) SerializeReturnsOnCall(i int, result1 []byte, result2 error) {
+	fake.SerializeStub = nil
+	if fake.serializeReturnsOnCall == nil {
+		fake.serializeReturnsOnCall = make(map[int]struct {
+			result1 []byte
+			result2 error
+		})
+	}
+	fake.serializeReturnsOnCall[i] = struct {
+		result1 []byte
+		result2 error
+	}{result1, result2}
 }
 
 func (fake *Support) IsSysCCAndNotInvokableExternal(name string) bool {
@@ -439,7 +602,7 @@ func (fake *Support) IsSysCCReturnsOnCall(i int, result1 bool) {
 	}{result1}
 }
 
-func (fake *Support) Execute(ctxt context.Context, cid string, name string, version string, txid string, syscc bool, signedProp *pb.SignedProposal, prop *pb.Proposal, spec interface{}) (*pb.Response, *pb.ChaincodeEvent, error) {
+func (fake *Support) Execute(ctxt context.Context, cid string, name string, version string, txid string, syscc bool, signedProp *pb.SignedProposal, prop *pb.Proposal, spec ccprovider.ChaincodeSpecGetter) (*pb.Response, *pb.ChaincodeEvent, error) {
 	fake.executeMutex.Lock()
 	ret, specificReturn := fake.executeReturnsOnCall[len(fake.executeArgsForCall)]
 	fake.executeArgsForCall = append(fake.executeArgsForCall, struct {
@@ -451,7 +614,7 @@ func (fake *Support) Execute(ctxt context.Context, cid string, name string, vers
 		syscc      bool
 		signedProp *pb.SignedProposal
 		prop       *pb.Proposal
-		spec       interface{}
+		spec       ccprovider.ChaincodeSpecGetter
 	}{ctxt, cid, name, version, txid, syscc, signedProp, prop, spec})
 	fake.recordInvocation("Execute", []interface{}{ctxt, cid, name, version, txid, syscc, signedProp, prop, spec})
 	fake.executeMutex.Unlock()
@@ -470,7 +633,7 @@ func (fake *Support) ExecuteCallCount() int {
 	return len(fake.executeArgsForCall)
 }
 
-func (fake *Support) ExecuteArgsForCall(i int) (context.Context, string, string, string, string, bool, *pb.SignedProposal, *pb.Proposal, interface{}) {
+func (fake *Support) ExecuteArgsForCall(i int) (context.Context, string, string, string, string, bool, *pb.SignedProposal, *pb.Proposal, ccprovider.ChaincodeSpecGetter) {
 	fake.executeMutex.RLock()
 	defer fake.executeMutex.RUnlock()
 	return fake.executeArgsForCall[i].ctxt, fake.executeArgsForCall[i].cid, fake.executeArgsForCall[i].name, fake.executeArgsForCall[i].version, fake.executeArgsForCall[i].txid, fake.executeArgsForCall[i].syscc, fake.executeArgsForCall[i].signedProp, fake.executeArgsForCall[i].prop, fake.executeArgsForCall[i].spec
@@ -501,7 +664,7 @@ func (fake *Support) ExecuteReturnsOnCall(i int, result1 *pb.Response, result2 *
 	}{result1, result2, result3}
 }
 
-func (fake *Support) GetChaincodeDefinition(ctx context.Context, chainID string, txid string, signedProp *pb.SignedProposal, prop *pb.Proposal, chaincodeID string, txsim ledger.TxSimulator) (resourcesconfig.ChaincodeDefinition, error) {
+func (fake *Support) GetChaincodeDefinition(ctx context.Context, chainID string, txid string, signedProp *pb.SignedProposal, prop *pb.Proposal, chaincodeID string, txsim ledger.TxSimulator) (ccprovider.ChaincodeDefinition, error) {
 	fake.getChaincodeDefinitionMutex.Lock()
 	ret, specificReturn := fake.getChaincodeDefinitionReturnsOnCall[len(fake.getChaincodeDefinitionArgsForCall)]
 	fake.getChaincodeDefinitionArgsForCall = append(fake.getChaincodeDefinitionArgsForCall, struct {
@@ -536,24 +699,24 @@ func (fake *Support) GetChaincodeDefinitionArgsForCall(i int) (context.Context, 
 	return fake.getChaincodeDefinitionArgsForCall[i].ctx, fake.getChaincodeDefinitionArgsForCall[i].chainID, fake.getChaincodeDefinitionArgsForCall[i].txid, fake.getChaincodeDefinitionArgsForCall[i].signedProp, fake.getChaincodeDefinitionArgsForCall[i].prop, fake.getChaincodeDefinitionArgsForCall[i].chaincodeID, fake.getChaincodeDefinitionArgsForCall[i].txsim
 }
 
-func (fake *Support) GetChaincodeDefinitionReturns(result1 resourcesconfig.ChaincodeDefinition, result2 error) {
+func (fake *Support) GetChaincodeDefinitionReturns(result1 ccprovider.ChaincodeDefinition, result2 error) {
 	fake.GetChaincodeDefinitionStub = nil
 	fake.getChaincodeDefinitionReturns = struct {
-		result1 resourcesconfig.ChaincodeDefinition
+		result1 ccprovider.ChaincodeDefinition
 		result2 error
 	}{result1, result2}
 }
 
-func (fake *Support) GetChaincodeDefinitionReturnsOnCall(i int, result1 resourcesconfig.ChaincodeDefinition, result2 error) {
+func (fake *Support) GetChaincodeDefinitionReturnsOnCall(i int, result1 ccprovider.ChaincodeDefinition, result2 error) {
 	fake.GetChaincodeDefinitionStub = nil
 	if fake.getChaincodeDefinitionReturnsOnCall == nil {
 		fake.getChaincodeDefinitionReturnsOnCall = make(map[int]struct {
-			result1 resourcesconfig.ChaincodeDefinition
+			result1 ccprovider.ChaincodeDefinition
 			result2 error
 		})
 	}
 	fake.getChaincodeDefinitionReturnsOnCall[i] = struct {
-		result1 resourcesconfig.ChaincodeDefinition
+		result1 ccprovider.ChaincodeDefinition
 		result2 error
 	}{result1, result2}
 }
@@ -665,13 +828,13 @@ func (fake *Support) IsJavaCCReturnsOnCall(i int, result1 bool, result2 error) {
 	}{result1, result2}
 }
 
-func (fake *Support) CheckInstantiationPolicy(name string, version string, cd resourcesconfig.ChaincodeDefinition) error {
+func (fake *Support) CheckInstantiationPolicy(name string, version string, cd ccprovider.ChaincodeDefinition) error {
 	fake.checkInstantiationPolicyMutex.Lock()
 	ret, specificReturn := fake.checkInstantiationPolicyReturnsOnCall[len(fake.checkInstantiationPolicyArgsForCall)]
 	fake.checkInstantiationPolicyArgsForCall = append(fake.checkInstantiationPolicyArgsForCall, struct {
 		name    string
 		version string
-		cd      resourcesconfig.ChaincodeDefinition
+		cd      ccprovider.ChaincodeDefinition
 	}{name, version, cd})
 	fake.recordInvocation("CheckInstantiationPolicy", []interface{}{name, version, cd})
 	fake.checkInstantiationPolicyMutex.Unlock()
@@ -690,7 +853,7 @@ func (fake *Support) CheckInstantiationPolicyCallCount() int {
 	return len(fake.checkInstantiationPolicyArgsForCall)
 }
 
-func (fake *Support) CheckInstantiationPolicyArgsForCall(i int) (string, string, resourcesconfig.ChaincodeDefinition) {
+func (fake *Support) CheckInstantiationPolicyArgsForCall(i int) (string, string, ccprovider.ChaincodeDefinition) {
 	fake.checkInstantiationPolicyMutex.RLock()
 	defer fake.checkInstantiationPolicyMutex.RUnlock()
 	return fake.checkInstantiationPolicyArgsForCall[i].name, fake.checkInstantiationPolicyArgsForCall[i].version, fake.checkInstantiationPolicyArgsForCall[i].cd
@@ -817,9 +980,166 @@ func (fake *Support) GetApplicationConfigReturnsOnCall(i int, result1 channelcon
 	}{result1, result2}
 }
 
+func (fake *Support) NewQueryCreator(channel string) (endorser_test.QueryCreator, error) {
+	fake.newQueryCreatorMutex.Lock()
+	ret, specificReturn := fake.newQueryCreatorReturnsOnCall[len(fake.newQueryCreatorArgsForCall)]
+	fake.newQueryCreatorArgsForCall = append(fake.newQueryCreatorArgsForCall, struct {
+		channel string
+	}{channel})
+	fake.recordInvocation("NewQueryCreator", []interface{}{channel})
+	fake.newQueryCreatorMutex.Unlock()
+	if fake.NewQueryCreatorStub != nil {
+		return fake.NewQueryCreatorStub(channel)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fake.newQueryCreatorReturns.result1, fake.newQueryCreatorReturns.result2
+}
+
+func (fake *Support) NewQueryCreatorCallCount() int {
+	fake.newQueryCreatorMutex.RLock()
+	defer fake.newQueryCreatorMutex.RUnlock()
+	return len(fake.newQueryCreatorArgsForCall)
+}
+
+func (fake *Support) NewQueryCreatorArgsForCall(i int) string {
+	fake.newQueryCreatorMutex.RLock()
+	defer fake.newQueryCreatorMutex.RUnlock()
+	return fake.newQueryCreatorArgsForCall[i].channel
+}
+
+func (fake *Support) NewQueryCreatorReturns(result1 endorser_test.QueryCreator, result2 error) {
+	fake.NewQueryCreatorStub = nil
+	fake.newQueryCreatorReturns = struct {
+		result1 endorser_test.QueryCreator
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Support) NewQueryCreatorReturnsOnCall(i int, result1 endorser_test.QueryCreator, result2 error) {
+	fake.NewQueryCreatorStub = nil
+	if fake.newQueryCreatorReturnsOnCall == nil {
+		fake.newQueryCreatorReturnsOnCall = make(map[int]struct {
+			result1 endorser_test.QueryCreator
+			result2 error
+		})
+	}
+	fake.newQueryCreatorReturnsOnCall[i] = struct {
+		result1 endorser_test.QueryCreator
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Support) EndorseWithPlugin(ctx endorser_test.Context) (*pb.ProposalResponse, error) {
+	fake.endorseWithPluginMutex.Lock()
+	ret, specificReturn := fake.endorseWithPluginReturnsOnCall[len(fake.endorseWithPluginArgsForCall)]
+	fake.endorseWithPluginArgsForCall = append(fake.endorseWithPluginArgsForCall, struct {
+		ctx endorser_test.Context
+	}{ctx})
+	fake.recordInvocation("EndorseWithPlugin", []interface{}{ctx})
+	fake.endorseWithPluginMutex.Unlock()
+	if fake.EndorseWithPluginStub != nil {
+		return fake.EndorseWithPluginStub(ctx)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fake.endorseWithPluginReturns.result1, fake.endorseWithPluginReturns.result2
+}
+
+func (fake *Support) EndorseWithPluginCallCount() int {
+	fake.endorseWithPluginMutex.RLock()
+	defer fake.endorseWithPluginMutex.RUnlock()
+	return len(fake.endorseWithPluginArgsForCall)
+}
+
+func (fake *Support) EndorseWithPluginArgsForCall(i int) endorser_test.Context {
+	fake.endorseWithPluginMutex.RLock()
+	defer fake.endorseWithPluginMutex.RUnlock()
+	return fake.endorseWithPluginArgsForCall[i].ctx
+}
+
+func (fake *Support) EndorseWithPluginReturns(result1 *pb.ProposalResponse, result2 error) {
+	fake.EndorseWithPluginStub = nil
+	fake.endorseWithPluginReturns = struct {
+		result1 *pb.ProposalResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Support) EndorseWithPluginReturnsOnCall(i int, result1 *pb.ProposalResponse, result2 error) {
+	fake.EndorseWithPluginStub = nil
+	if fake.endorseWithPluginReturnsOnCall == nil {
+		fake.endorseWithPluginReturnsOnCall = make(map[int]struct {
+			result1 *pb.ProposalResponse
+			result2 error
+		})
+	}
+	fake.endorseWithPluginReturnsOnCall[i] = struct {
+		result1 *pb.ProposalResponse
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Support) GetLedgerHeight(channelID string) (uint64, error) {
+	fake.getLedgerHeightMutex.Lock()
+	ret, specificReturn := fake.getLedgerHeightReturnsOnCall[len(fake.getLedgerHeightArgsForCall)]
+	fake.getLedgerHeightArgsForCall = append(fake.getLedgerHeightArgsForCall, struct {
+		channelID string
+	}{channelID})
+	fake.recordInvocation("GetLedgerHeight", []interface{}{channelID})
+	fake.getLedgerHeightMutex.Unlock()
+	if fake.GetLedgerHeightStub != nil {
+		return fake.GetLedgerHeightStub(channelID)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fake.getLedgerHeightReturns.result1, fake.getLedgerHeightReturns.result2
+}
+
+func (fake *Support) GetLedgerHeightCallCount() int {
+	fake.getLedgerHeightMutex.RLock()
+	defer fake.getLedgerHeightMutex.RUnlock()
+	return len(fake.getLedgerHeightArgsForCall)
+}
+
+func (fake *Support) GetLedgerHeightArgsForCall(i int) string {
+	fake.getLedgerHeightMutex.RLock()
+	defer fake.getLedgerHeightMutex.RUnlock()
+	return fake.getLedgerHeightArgsForCall[i].channelID
+}
+
+func (fake *Support) GetLedgerHeightReturns(result1 uint64, result2 error) {
+	fake.GetLedgerHeightStub = nil
+	fake.getLedgerHeightReturns = struct {
+		result1 uint64
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *Support) GetLedgerHeightReturnsOnCall(i int, result1 uint64, result2 error) {
+	fake.GetLedgerHeightStub = nil
+	if fake.getLedgerHeightReturnsOnCall == nil {
+		fake.getLedgerHeightReturnsOnCall = make(map[int]struct {
+			result1 uint64
+			result2 error
+		})
+	}
+	fake.getLedgerHeightReturnsOnCall[i] = struct {
+		result1 uint64
+		result2 error
+	}{result1, result2}
+}
+
 func (fake *Support) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
+	fake.signMutex.RLock()
+	defer fake.signMutex.RUnlock()
+	fake.serializeMutex.RLock()
+	defer fake.serializeMutex.RUnlock()
 	fake.isSysCCAndNotInvokableExternalMutex.RLock()
 	defer fake.isSysCCAndNotInvokableExternalMutex.RUnlock()
 	fake.getTxSimulatorMutex.RLock()
@@ -844,6 +1164,12 @@ func (fake *Support) Invocations() map[string][][]interface{} {
 	defer fake.getChaincodeDeploymentSpecFSMutex.RUnlock()
 	fake.getApplicationConfigMutex.RLock()
 	defer fake.getApplicationConfigMutex.RUnlock()
+	fake.newQueryCreatorMutex.RLock()
+	defer fake.newQueryCreatorMutex.RUnlock()
+	fake.endorseWithPluginMutex.RLock()
+	defer fake.endorseWithPluginMutex.RUnlock()
+	fake.getLedgerHeightMutex.RLock()
+	defer fake.getLedgerHeightMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

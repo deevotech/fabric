@@ -1,17 +1,6 @@
 /*
-Copyright IBM Corp. 2016, 2017 All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-		 http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Copyright IBM Corp. All Rights Reserved.
+SPDX-License-Identifier: Apache-2.0
 */
 
 package couchdb
@@ -144,7 +133,7 @@ type CouchInstance struct {
 
 //CouchDatabase represents a database within a CouchDB instance
 type CouchDatabase struct {
-	CouchInstance    CouchInstance //connection configuration
+	CouchInstance    *CouchInstance //connection configuration
 	DBName           string
 	IndexWarmCounter int
 }
@@ -211,25 +200,23 @@ type Base64Attachment struct {
 	AttachmentData string `json:"data"`
 }
 
-//ListIndexResponse contains the definition for listing couchdb indexes
-type ListIndexResponse struct {
-	TotalRows int               `json:"total_rows"`
-	Indexes   []IndexDefinition `json:"indexes"`
-}
-
-//IndexDefinition contains the definition for a couchdb index
-type IndexDefinition struct {
-	DesignDocument string          `json:"ddoc"`
-	Name           string          `json:"name"`
-	Type           string          `json:"type"`
-	Definition     json.RawMessage `json:"def"`
-}
-
 //IndexResult contains the definition for a couchdb index
 type IndexResult struct {
 	DesignDocument string `json:"designdoc"`
 	Name           string `json:"name"`
 	Definition     string `json:"definition"`
+}
+
+//DatabaseSecurity contains the definition for CouchDB database security
+type DatabaseSecurity struct {
+	Admins struct {
+		Names []string `json:"names"`
+		Roles []string `json:"roles"`
+	} `json:"admins"`
+	Members struct {
+		Names []string `json:"names"`
+		Roles []string `json:"roles"`
+	} `json:"members"`
 }
 
 // closeResponseBody discards the body and then closes it to enable returning it to
@@ -283,6 +270,12 @@ func (dbclient *CouchDatabase) CreateDatabaseIfNotExist() error {
 	//If the dbInfo returns populated and status code is 200, then the database exists
 	if dbInfo != nil && couchDBReturn.StatusCode == 200 {
 
+		//Apply database security if needed
+		errSecurity := dbclient.applyDatabasePermissions()
+		if errSecurity != nil {
+			return errSecurity
+		}
+
 		logger.Debugf("Database %s already exists", dbclient.DBName)
 
 		logger.Debugf("Exiting CreateDatabaseIfNotExist()")
@@ -315,14 +308,26 @@ func (dbclient *CouchDatabase) CreateDatabaseIfNotExist() error {
 		dbInfo, couchDBReturn, errDbInfo := dbclient.GetDatabaseInfo()
 		//If there is no error, then the database exists,  return without an error
 		if errDbInfo == nil && dbInfo != nil && couchDBReturn.StatusCode == 200 {
+
+			errSecurity := dbclient.applyDatabasePermissions()
+			if errSecurity != nil {
+				return errSecurity
+			}
+
 			logger.Infof("Created state database %s", dbclient.DBName)
 			logger.Debugf("Exiting CreateDatabaseIfNotExist()")
 			return nil
 		}
 
 		return err
+
 	}
 	defer closeResponseBody(resp)
+
+	errSecurity := dbclient.applyDatabasePermissions()
+	if errSecurity != nil {
+		return errSecurity
+	}
 
 	logger.Infof("Created state database %s", dbclient.DBName)
 
@@ -330,6 +335,27 @@ func (dbclient *CouchDatabase) CreateDatabaseIfNotExist() error {
 
 	return nil
 
+}
+
+//applyDatabaseSecurity
+func (dbclient *CouchDatabase) applyDatabasePermissions() error {
+
+	//If the username and password are not set, then skip applying permissions
+	if dbclient.CouchInstance.conf.Username == "" && dbclient.CouchInstance.conf.Password == "" {
+		return nil
+	}
+
+	securityPermissions := &DatabaseSecurity{}
+
+	securityPermissions.Admins.Names = append(securityPermissions.Admins.Names, dbclient.CouchInstance.conf.Username)
+	securityPermissions.Members.Names = append(securityPermissions.Members.Names, dbclient.CouchInstance.conf.Username)
+
+	err := dbclient.ApplyDatabaseSecurity(securityPermissions)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 //GetDatabaseInfo method provides function to retrieve database information
@@ -410,7 +436,7 @@ func (couchInstance *CouchInstance) VerifyCouchConfig() (*ConnectionInfo, *DBRet
 	//Verifying the existence of the system database accomplishes two steps
 	//1.  Ensures the system databases are created
 	//2.  Verifies the username password provided in the CouchDB config are valid for system admin
-	err = CreateSystemDatabasesIfNotExist(*couchInstance)
+	err = CreateSystemDatabasesIfNotExist(couchInstance)
 	if err != nil {
 		logger.Errorf("Unable to connect to CouchDB,  error: %s   Check the admin username and password.\n", err.Error())
 		return nil, nil, fmt.Errorf("Unable to connect to CouchDB,  error: %s   Check the admin username and password.\n", err.Error())
@@ -1082,9 +1108,23 @@ func (dbclient *CouchDatabase) QueryDocuments(query string) (*[]QueryResult, err
 }
 
 // ListIndex method lists the defined indexes for a database
-func (dbclient *CouchDatabase) ListIndex() (*[]IndexResult, error) {
+func (dbclient *CouchDatabase) ListIndex() ([]*IndexResult, error) {
 
-	logger.Debugf("Entering ListIndex()")
+	//IndexDefinition contains the definition for a couchdb index
+	type indexDefinition struct {
+		DesignDocument string          `json:"ddoc"`
+		Name           string          `json:"name"`
+		Type           string          `json:"type"`
+		Definition     json.RawMessage `json:"def"`
+	}
+
+	//ListIndexResponse contains the definition for listing couchdb indexes
+	type listIndexResponse struct {
+		TotalRows int               `json:"total_rows"`
+		Indexes   []indexDefinition `json:"indexes"`
+	}
+
+	logger.Debug("Entering ListIndex()")
 
 	indexURL, err := url.Parse(dbclient.CouchInstance.conf.URL)
 	if err != nil {
@@ -1109,14 +1149,14 @@ func (dbclient *CouchDatabase) ListIndex() (*[]IndexResult, error) {
 		return nil, err
 	}
 
-	var jsonResponse = &ListIndexResponse{}
+	var jsonResponse = &listIndexResponse{}
 
-	err2 := json.Unmarshal(jsonResponseRaw, &jsonResponse)
+	err2 := json.Unmarshal(jsonResponseRaw, jsonResponse)
 	if err2 != nil {
 		return nil, err2
 	}
 
-	var results []IndexResult
+	var results []*IndexResult
 
 	for _, row := range jsonResponse.Indexes {
 
@@ -1129,14 +1169,14 @@ func (dbclient *CouchDatabase) ListIndex() (*[]IndexResult, error) {
 
 			//Add the index definition to the results
 			var addIndexResult = &IndexResult{DesignDocument: designDoc, Name: row.Name, Definition: fmt.Sprintf("%s", row.Definition)}
-			results = append(results, *addIndexResult)
+			results = append(results, addIndexResult)
 		}
 
 	}
 
 	logger.Debugf("Exiting ListIndex()")
 
-	return &results, nil
+	return results, nil
 
 }
 
@@ -1281,7 +1321,7 @@ func (dbclient *CouchDatabase) WarmIndexAllIndexes() error {
 	}
 
 	//For each index definition, execute an index refresh
-	for _, elem := range *listResult {
+	for _, elem := range listResult {
 
 		err := dbclient.WarmIndex(elem.DesignDocument, elem.Name)
 		if err != nil {
@@ -1291,6 +1331,99 @@ func (dbclient *CouchDatabase) WarmIndexAllIndexes() error {
 	}
 
 	logger.Debugf("Exiting WarmIndexAllIndexes()")
+
+	return nil
+
+}
+
+//GetDatabaseSecurity method provides function to retrieve the security config for a database
+func (dbclient *CouchDatabase) GetDatabaseSecurity() (*DatabaseSecurity, error) {
+
+	logger.Debugf("Entering GetDatabaseSecurity()")
+
+	securityURL, err := url.Parse(dbclient.CouchInstance.conf.URL)
+	if err != nil {
+		logger.Errorf("URL parse error: %s", err.Error())
+		return nil, err
+	}
+
+	securityURL.Path = dbclient.DBName + "/_security"
+
+	//get the number of retries
+	maxRetries := dbclient.CouchInstance.conf.MaxRetries
+
+	resp, _, err := dbclient.CouchInstance.handleRequest(http.MethodGet, securityURL.String(),
+		nil, "", "", maxRetries, true)
+
+	if err != nil {
+		return nil, err
+	}
+	defer closeResponseBody(resp)
+
+	//handle as JSON document
+	jsonResponseRaw, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var jsonResponse = &DatabaseSecurity{}
+
+	err2 := json.Unmarshal(jsonResponseRaw, jsonResponse)
+	if err2 != nil {
+		return nil, err2
+	}
+
+	logger.Debugf("Exiting GetDatabaseSecurity()")
+
+	return jsonResponse, nil
+
+}
+
+//ApplyDatabaseSecurity method provides function to update the security config for a database
+func (dbclient *CouchDatabase) ApplyDatabaseSecurity(databaseSecurity *DatabaseSecurity) error {
+
+	logger.Debugf("Entering ApplyDatabaseSecurity()")
+
+	securityURL, err := url.Parse(dbclient.CouchInstance.conf.URL)
+	if err != nil {
+		logger.Errorf("URL parse error: %s", err.Error())
+		return err
+	}
+
+	securityURL.Path = dbclient.DBName + "/_security"
+
+	//Ensure all of the arrays are initialized to empty arrays instead of nil
+	if databaseSecurity.Admins.Names == nil {
+		databaseSecurity.Admins.Names = make([]string, 0)
+	}
+	if databaseSecurity.Admins.Roles == nil {
+		databaseSecurity.Admins.Roles = make([]string, 0)
+	}
+	if databaseSecurity.Members.Names == nil {
+		databaseSecurity.Members.Names = make([]string, 0)
+	}
+	if databaseSecurity.Members.Roles == nil {
+		databaseSecurity.Members.Roles = make([]string, 0)
+	}
+
+	//get the number of retries
+	maxRetries := dbclient.CouchInstance.conf.MaxRetries
+
+	databaseSecurityJSON, err := json.Marshal(databaseSecurity)
+	if err != nil {
+		return err
+	}
+
+	logger.Debugf("Applying security to database [%s]: %s", dbclient.DBName, string(databaseSecurityJSON))
+
+	resp, _, err := dbclient.CouchInstance.handleRequest(http.MethodPut, securityURL.String(), databaseSecurityJSON, "", "", maxRetries, true)
+
+	if err != nil {
+		return err
+	}
+	defer closeResponseBody(resp)
+
+	logger.Debugf("Exiting ApplyDatabaseSecurity()")
 
 	return nil
 
@@ -1585,6 +1718,7 @@ func (couchInstance *CouchInstance) handleRequest(method, connectURL string, dat
 
 		//If username and password are set the use basic auth
 		if couchInstance.conf.Username != "" && couchInstance.conf.Password != "" {
+			//req.Header.Set("Authorization", "Basic YWRtaW46YWRtaW5w")
 			req.SetBasicAuth(couchInstance.conf.Username, couchInstance.conf.Password)
 		}
 
@@ -1604,6 +1738,23 @@ func (couchInstance *CouchInstance) handleRequest(method, connectURL string, dat
 
 		//if there is no golang http error and no CouchDB 500 error, then drop out of the retry
 		if errResp == nil && resp != nil && resp.StatusCode < 500 {
+			// if this is an error, then populate the couchDBReturn
+			if resp.StatusCode >= 400 {
+				//Read the response body and close it for next attempt
+				jsonError, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					return nil, nil, err
+				}
+				defer closeResponseBody(resp)
+
+				errorBytes := []byte(jsonError)
+				//Unmarshal the response
+				err = json.Unmarshal(errorBytes, &couchDBReturn)
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+
 			break
 		}
 
@@ -1621,7 +1772,7 @@ func (couchInstance *CouchInstance) handleRequest(method, connectURL string, dat
 			} else {
 				//Read the response body and close it for next attempt
 				jsonError, err := ioutil.ReadAll(resp.Body)
-				closeResponseBody(resp)
+				defer closeResponseBody(resp)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -1650,7 +1801,7 @@ func (couchInstance *CouchInstance) handleRequest(method, connectURL string, dat
 
 	//if a golang http error is still present after retries are exhausted, return the error
 	if errResp != nil {
-		return nil, nil, errResp
+		return nil, couchDBReturn, errResp
 	}
 
 	//This situation should not occur according to the golang spec.
@@ -1664,27 +1815,12 @@ func (couchInstance *CouchInstance) handleRequest(method, connectURL string, dat
 	//set the return code for the couchDB request
 	couchDBReturn.StatusCode = resp.StatusCode
 
-	//check to see if the status code from couchdb is 400 or higher
-	//response codes 4XX and 500 will be treated as errors -
-	//golang error will be created from the couchDBReturn contents and both will be returned
+	// check to see if the status code from couchdb is 400 or higher
+	// response codes 4XX and 500 will be treated as errors -
+	// golang error will be created from the couchDBReturn contents and both will be returned
 	if resp.StatusCode >= 400 {
-		// close the response before returning error
-		defer closeResponseBody(resp)
 
-		//Read the response body
-		jsonError, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		errorBytes := []byte(jsonError)
-
-		//marshal the response
-		err = json.Unmarshal(errorBytes, &couchDBReturn)
-		if err != nil {
-			return nil, nil, err
-		}
-
+		// if the status code is 400 or greater, log and return an error
 		logger.Debugf("Couch DB Error:%s,  Status Code:%v,  Reason:%s",
 			couchDBReturn.Error, resp.StatusCode, couchDBReturn.Reason)
 

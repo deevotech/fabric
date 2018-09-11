@@ -3,39 +3,21 @@ Getting Started
 
 .. toctree::
    :maxdepth: 1
+   :hidden:
 
    prereqs
-   samples
-
-Install Prerequisites
-^^^^^^^^^^^^^^^^^^^^^
+   install
 
 Before we begin, if you haven't already done so, you may wish to check that
 you have all the :doc:`prereqs` installed on the platform(s)
 on which you'll be developing blockchain applications and/or operating
 Hyperledger Fabric.
 
-Install Binaries and Docker Images
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-While we work on developing real installers for the Hyperledger Fabric
-binaries, we provide a script that will :ref:`binaries` to your system.
+Once you have the prerequisites installed, you are ready to download and
+install HyperLedger Fabric. While we work on developing real installers for the
+Fabric binaries, we provide a script that will :doc:`install` to your system.
 The script also will download the Docker images to your local registry.
 
-Hyperledger Fabric Samples
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-We offer a set of sample applications that you may wish to install these
-:doc:`samples` before starting with the tutorials as the tutorials leverage
-the sample code.
-
-API Documentation
-^^^^^^^^^^^^^^^^^
-
-The API documentation for Hyperledger Fabric's Golang APIs can be found on
-the godoc site for `Fabric <http://godoc.org/github.com/hyperledger/fabric>`_.
-If you plan on doing any development using these APIs, you may want to
-bookmark those links now.
 
 Hyperledger Fabric SDKs
 ^^^^^^^^^^^^^^^^^^^^^^^

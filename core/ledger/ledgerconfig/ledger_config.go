@@ -1,17 +1,7 @@
 /*
-Copyright IBM Corp. 2016 All Rights Reserved.
+Copyright IBM Corp. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-		 http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+SPDX-License-Identifier: Apache-2.0
 */
 
 package ledgerconfig
@@ -37,7 +27,8 @@ const confLedgersData = "ledgersData"
 const confLedgerProvider = "ledgerProvider"
 const confStateleveldb = "stateLeveldb"
 const confHistoryLeveldb = "historyLeveldb"
-const confPvtWritesetStore = "pvtWritesetStore"
+const confBookkeeper = "bookkeeper"
+const confConfigHistory = "configHistory"
 const confChains = "chains"
 const confPvtdataStore = "pvtdataStore"
 const confQueryLimit = "ledger.state.couchDBConfig.queryLimit"
@@ -68,11 +59,6 @@ func GetHistoryLevelDBPath() string {
 	return filepath.Join(GetRootPath(), confHistoryLeveldb)
 }
 
-// GetPvtWritesetStorePath returns the filesystem path that is used for permanent storage of privare write-sets
-func GetPvtWritesetStorePath() string {
-	return filepath.Join(GetRootPath(), confPvtWritesetStore)
-}
-
 // GetBlockStorePath returns the filesystem path that is used for the chain block stores
 func GetBlockStorePath() string {
 	return filepath.Join(GetRootPath(), confChains)
@@ -81,6 +67,16 @@ func GetBlockStorePath() string {
 // GetPvtdataStorePath returns the filesystem path that is used for permanent storage of private write-sets
 func GetPvtdataStorePath() string {
 	return filepath.Join(GetRootPath(), confPvtdataStore)
+}
+
+// GetInternalBookkeeperPath returns the filesystem path that is used for bookkeeping the internal stuff by by KVledger (such as expiration time for pvt)
+func GetInternalBookkeeperPath() string {
+	return filepath.Join(GetRootPath(), confBookkeeper)
+}
+
+// GetConfigHistoryPath returns the filesystem path that is used for maintaining history of chaincodes collection configurations
+func GetConfigHistoryPath() string {
+	return filepath.Join(GetRootPath(), confConfigHistory)
 }
 
 // GetMaxBlockfileSize returns maximum size of the block file
@@ -106,6 +102,16 @@ func GetMaxBatchUpdateSize() int {
 		maxBatchUpdateSize = 500
 	}
 	return maxBatchUpdateSize
+}
+
+// GetPvtdataStorePurgeInterval returns the interval in the terms of number of blocks
+// when the purge for the expired data would be performed
+func GetPvtdataStorePurgeInterval() uint64 {
+	purgeInterval := viper.GetInt("ledger.pvtdataStore.purgeInterval")
+	if purgeInterval <= 0 {
+		purgeInterval = 100
+	}
+	return uint64(purgeInterval)
 }
 
 //IsHistoryDBEnabled exposes the historyDatabase variable
