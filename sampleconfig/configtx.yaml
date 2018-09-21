@@ -227,7 +227,8 @@ Orderer: &OrdererDefaults
     # participation in ordering.
     # NOTE: In the solo case, this should be a one-item list.
     Addresses:
-        - 127.0.0.1:7050
+        - bft.frontend.1000:7050
+        - bft.frontend.2000:7050
 
     # Batch Timeout: The amount of time to wait before creating a batch.
     BatchTimeout: 2s
@@ -263,6 +264,15 @@ Orderer: &OrdererDefaults
             - kafka0:9092
             - kafka1:9092
             - kafka2:9092
+
+    #JCS: BFT-SMaRt options
+    BFTsmart:
+
+        # ConnectionPoolSize: The size of the connection pool that links the golang component to the java component.
+        ConnectionPoolSize: 20
+
+        # RecvPort: The localhost TCP port from which the java component sends blocks to the golang component.
+        RecvPort: 9999
 
     # Organizations lists the orgs participating on the orderer side of the
     # network.
@@ -368,6 +378,22 @@ Profiles:
                 Organizations:
                     - *SampleOrg
 
+    # JCS: my profile
+    # SampleSingleMSPBFTsmart defines a configuration which uses the bftsmart orderer,
+    # and contains a single MSP definition (the MSP sampleconfig).
+    # The Consortium SampleConsortium has only a single member, SampleOrg
+    SampleSingleMSPBFTsmart:
+        <<: *ChannelDefaults
+        Orderer:
+            <<: *OrdererDefaults
+            OrdererType: bftsmart
+            Organizations:
+                - *SampleOrg
+        Consortiums:
+            SampleConsortium:
+                Organizations:
+                    - *SampleOrg
+
     # SampleInsecureSolo defines a configuration which uses the Solo orderer,
     # contains no MSP definitions, and allows all transactions and channel
     # creation requests for the consortium SampleConsortium.
@@ -385,6 +411,18 @@ Profiles:
         <<: *ChannelDefaults
         Orderer:
             OrdererType: kafka
+            <<: *OrdererDefaults
+        Consortiums:
+            SampleConsortium:
+                Organizations:
+
+    # JCS: my profile
+    # SampleInsecureBFTsmart defines a configuration that differs from the
+    # SampleInsecureSolo one only in that is uses the bftsmart-based orderer.
+    SampleInsecureBFTsmart:
+        <<: *ChannelDefaults
+        Orderer:
+            OrdererType: bftsmart
             <<: *OrdererDefaults
         Consortiums:
             SampleConsortium:
@@ -432,6 +470,40 @@ Profiles:
         Orderer:
             <<: *OrdererDefaults
             OrdererType: kafka
+            Organizations:
+                - <<: *SampleOrg
+                  Policies:
+                      <<: *SampleOrgPolicies
+                      Admins:
+                          Type: Signature
+                          Rule: "OR('SampleOrg.member')"
+        Application:
+            <<: *ApplicationDefaults
+            Organizations:
+                - <<: *SampleOrg
+                  Policies:
+                      <<: *SampleOrgPolicies
+                      Admins:
+                          Type: Signature
+                          Rule: "OR('SampleOrg.member')"
+        Consortiums:
+            SampleConsortium:
+                Organizations:
+                    - <<: *SampleOrg
+                      Policies:
+                          <<: *SampleOrgPolicies
+                          Admins:
+                              Type: Signature
+                              Rule: "OR('SampleOrg.member')"
+
+    # JCS: my profile
+    # SampleDevModeBFTsmart defines a configuration that differs from the
+    # SampleDevModeSolo one only in that it uses the bftsmart-based orderer.
+    SampleDevModeKafka:
+        <<: *ChannelDefaults
+        Orderer:
+            <<: *OrdererDefaults
+            OrdererType: bftsmart
             Organizations:
                 - <<: *SampleOrg
                   Policies:
