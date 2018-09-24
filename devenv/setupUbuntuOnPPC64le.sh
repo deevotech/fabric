@@ -45,7 +45,7 @@ apt-get -y install software-properties-common curl git sudo wget "build-essentia
 # Install and setup Docker services #
 #####################################
 # Along with docker.io, aufs-tools also needs to be installed as 'auplink' which is part of aufs-tools package
-apt-get -y install docker.io aufs-tools
+# apt-get -y install docker.io aufs-tools
 
 # Set DOCKER_OPTS and restart Docker daemon.
 sed  -i '/#DOCKER_OPTS=/a DOCKER_OPTS="-H tcp://0.0.0.0:2375 -H unix:///var/run/docker.sock"' /etc/default/docker
