@@ -41,6 +41,7 @@ var poolsize uint = 0
 var poolindex uint = 0
 var recvport uint = 0
 var unixsocket string
+var javaready string
 var sendProxy net.Conn
 var sendPool []net.Conn
 var mutex []*sync.Mutex
@@ -65,6 +66,7 @@ func New(config localconfig.BFTsmart) consensus.Consenter {
 	poolsize = config.ConnectionPoolSize
 	recvport = config.RecvPort
 	unixsocket = fmt.Sprintf("%s%s%d%s", os.TempDir(), "/hlf-pool-", recvport, ".sock")
+	javaready = fmt.Sprintf("%s%s%d%s", os.TempDir(), "/hlf-proxy-", recvport, ".ready")
 	return &consenter{
 		createSystemChannel: true,
 	}
@@ -96,6 +98,27 @@ func (ch *chain) Start() {
 	logger.Infof("Starting new bftsmart chain with ID '%s'\n", ch.support.ChainID())
 
 	if ch.isSystemChannel {
+
+		logger.Info("Waiting for java component to be ready")
+
+		for { // wait for the java component to create the socket file
+
+			if _, err := os.Stat(javaready); !os.IsNotExist(err) {
+
+				break
+
+			} else {
+
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
+
+		err := os.Remove(javaready)
+
+		if err != nil {
+
+			logger.Warning(fmt.Sprintf("Could not delete file %s: %s\n", javaready, err))
+		}
 
 		conn, err := net.Dial("unix", unixsocket)
 
