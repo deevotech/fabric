@@ -13,6 +13,7 @@ tags
 .tags
 .vagrant/
 /.build
+build/
 /release/darwin-amd64
 /release/linux-amd64
 /release/linux-s390x
@@ -46,3 +47,4 @@ examples/e2e_cli/crypto-config/*
 .tox/
 # vscode settings
 .vscode
+maven_data.xml
