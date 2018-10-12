@@ -27,7 +27,6 @@ import (
 	"github.com/hyperledger/fabric/orderer/common/metadata"
 	"github.com/hyperledger/fabric/orderer/common/multichannel"
 	"github.com/hyperledger/fabric/orderer/consensus"
-	"github.com/hyperledger/fabric/orderer/consensus/bftsmart" //JCS: import my package
 	"github.com/hyperledger/fabric/orderer/consensus/kafka"
 	"github.com/hyperledger/fabric/orderer/consensus/solo"
 	cb "github.com/hyperledger/fabric/protos/common"
@@ -38,17 +37,12 @@ import (
 	"github.com/hyperledger/fabric/common/util"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/orderer/common/performance"
-	"github.com/op/go-logging"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const pkgLogID = "orderer/common/server"
 
-var logger *logging.Logger
-
-func init() {
-	logger = flogging.MustGetLogger(pkgLogID)
-}
+var logger = flogging.MustGetLogger(pkgLogID)
 
 //command line flags
 var (
@@ -120,8 +114,11 @@ func Start(cmd string, conf *localconfig.TopLevel) {
 
 // Set the logging level
 func initializeLoggingLevel(conf *localconfig.TopLevel) {
-	flogging.InitBackend(flogging.SetFormat(conf.General.LogFormat), os.Stderr)
-	flogging.InitFromSpec(conf.General.LogLevel)
+	flogging.Init(flogging.Config{
+		Format:  conf.General.LogFormat,
+		Writer:  os.Stderr,
+		LogSpec: conf.General.LogLevel,
+	})
 }
 
 // Start the profiling service if enabled.
@@ -257,7 +254,6 @@ func initializeMultichannelRegistrar(conf *localconfig.TopLevel, signer crypto.L
 	consenters := make(map[string]consensus.Consenter)
 	consenters["solo"] = solo.New()
 	consenters["kafka"] = kafka.New(conf.Kafka)
-	consenters["bftsmart"] = bftsmart.New(conf.BFTsmart) //JCS: create my own consenter
 
 	return multichannel.NewRegistrar(lf, consenters, signer, callbacks...)
 }

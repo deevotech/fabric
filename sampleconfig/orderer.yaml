@@ -19,10 +19,10 @@ General:
     #  - json: A simple file ledger that writes blocks to disk in JSON format.
     # Only one production ledger type is provided:
     #  - file: A production file-based ledger.
-    LedgerType: ram
+    LedgerType: file
 
     # Listen address: The IP on which to bind to listen.
-    ListenAddress: 0.0.0.0
+    ListenAddress: 127.0.0.1
 
     # Listen port: The port on which to bind to listen.
     ListenPort: 7050
@@ -61,19 +61,19 @@ General:
     #  - provisional: Utilizes a genesis profile, specified by GenesisProfile,
     #                 to dynamically generate a new genesis block.
     #  - file: Uses the file provided by GenesisFile as the genesis block.
-    GenesisMethod: file
+    GenesisMethod: provisional
 
     # Genesis profile: The profile to use to dynamically generate the genesis
     # block to use when initializing the orderer system channel and
     # GenesisMethod is set to "provisional". See the configtx.yaml file for the
     # descriptions of the available profiles. Ignored if GenesisMethod is set to
     # "file".
-    GenesisProfile: SampleSingleMSPBFTsmart
+    GenesisProfile: SampleInsecureSolo
 
     # Genesis file: The file containing the genesis block to use when
     # initializing the orderer system channel and GenesisMethod is set to
     # "file". Ignored if GenesisMethod is set to "provisional".
-    GenesisFile: /etc/bftsmart-orderer/config/genesisblock
+    GenesisFile: genesisblock
 
     # LocalMSPDir is where to find the private crypto material needed by the
     # orderer. It is set relative here as a default for dev environments but
@@ -210,7 +210,11 @@ Kafka:
         # https://godoc.org/github.com/Shopify/sarama#Config
         Consumer:
             RetryBackoff: 2s
-
+    # Settings to use when creating Kafka topics.  Only applies when
+    # Kafka.Version is v0.10.1.0 or higher
+    Topic:
+        # The number of Kafka brokers across which to replicate the topic
+        ReplicationFactor: 3
     # Verbose: Enable logging for interactions with the Kafka cluster.
     Verbose: false
 
@@ -244,25 +248,18 @@ Kafka:
         # value of RootCAs.
         #File: path/to/RootCAs
 
+    # SASLPlain: Settings for using SASL/PLAIN authentication with Kafka brokers
+    SASLPlain:
+      # Enabled: Use SASL/PLAIN to authenticate with Kafka brokers
+      Enabled: false
+      # User: Required when Enabled is set to true
+      User:
+      # Password: Required when Enabled is set to true
+      Password:
+
     # Kafka protocol version used to communicate with the Kafka cluster brokers
     # (defaults to 0.10.2.0 if not specified)
     Version:
-
-# JCS: new section for bftsmart
-################################################################################
-#
-#   SECTION: BFT-SMaRt
-#
-#   - This section applies to the configuration of the bftsmart-based orderer.
-#
-################################################################################
-BFTsmart:
-
-    # ConnectionPoolSize: The size of the connection pool that links the golang component to the java component.
-    ConnectionPoolSize: 10
-
-    # RecvPort: The localhost TCP port from which the java component sends blocks to the golang component.
-    RecvPort: 9999
 
 ################################################################################
 #

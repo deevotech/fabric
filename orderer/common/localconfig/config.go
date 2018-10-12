@@ -33,7 +33,6 @@ type TopLevel struct {
 	FileLedger FileLedger
 	RAMLedger  RAMLedger
 	Kafka      Kafka
-	BFTsmart   BFTsmart //JCS my struct
 	Debug      Debug
 }
 
@@ -74,6 +73,13 @@ type TLS struct {
 	ClientRootCAs      []string
 }
 
+// SASLPlain contains configuration for SASL/PLAIN authentication
+type SASLPlain struct {
+	Enabled  bool
+	User     string
+	Password string
+}
+
 // Authentication contains configuration parameters related to authenticating
 // client messages.
 type Authentication struct {
@@ -99,16 +105,12 @@ type RAMLedger struct {
 
 // Kafka contains configuration for the Kafka-based orderer.
 type Kafka struct {
-	Retry   Retry
-	Verbose bool
-	Version sarama.KafkaVersion // TODO Move this to global config
-	TLS     TLS
-}
-
-//JCS: BFTsmart contains configuration for the BFT-SMaRt orderer
-type BFTsmart struct {
-	ConnectionPoolSize uint
-	RecvPort           uint
+	Retry     Retry
+	Verbose   bool
+	Version   sarama.KafkaVersion // TODO Move this to global config
+	TLS       TLS
+	SASLPlain SASLPlain
+	Topic     Topic
 }
 
 // Retry contains configuration related to retries and timeouts when the
@@ -152,6 +154,11 @@ type Producer struct {
 // read from a Kafa partition.
 type Consumer struct {
 	RetryBackoff time.Duration
+}
+
+// Topic contains the settings to use when creating Kafka topics
+type Topic struct {
+	ReplicationFactor int16
 }
 
 // Debug contains configuration for the orderer's debug parameters.
@@ -218,11 +225,9 @@ var Defaults = TopLevel{
 		TLS: TLS{
 			Enabled: false,
 		},
-	},
-	BFTsmart: BFTsmart{ //JCS: my struct
-
-		ConnectionPoolSize: 20,
-		RecvPort:           9999,
+		Topic: Topic{
+			ReplicationFactor: 3,
+		},
 	},
 	Debug: Debug{
 		BroadcastTraceDir: "",
@@ -274,7 +279,7 @@ func (c *TopLevel) completeInitialization(configDir string) {
 			logger.Infof("General.ListenAddress unset, setting to %s", Defaults.General.ListenAddress)
 			c.General.ListenAddress = Defaults.General.ListenAddress
 		case c.General.ListenPort == 0:
-			logger.Infof("General.ListenPort unset, setting to %s", Defaults.General.ListenPort)
+			logger.Infof("General.ListenPort unset, setting to %v", Defaults.General.ListenPort)
 			c.General.ListenPort = Defaults.General.ListenPort
 
 		case c.General.LogLevel == "":
@@ -299,6 +304,11 @@ func (c *TopLevel) completeInitialization(configDir string) {
 			logger.Panicf("General.Kafka.TLS.PrivateKey must be set if General.Kafka.TLS.Enabled is set to true.")
 		case c.Kafka.TLS.Enabled && c.Kafka.TLS.RootCAs == nil:
 			logger.Panicf("General.Kafka.TLS.CertificatePool must be set if General.Kafka.TLS.Enabled is set to true.")
+
+		case c.Kafka.SASLPlain.Enabled && c.Kafka.SASLPlain.User == "":
+			logger.Panic("General.Kafka.SASLPlain.User must be set if General.Kafka.SASLPlain.Enabled is set to true.")
+		case c.Kafka.SASLPlain.Enabled && c.Kafka.SASLPlain.Password == "":
+			logger.Panic("General.Kafka.SASLPlain.Password must be set if General.Kafka.SASLPlain.Enabled is set to true.")
 
 		case c.General.Profile.Enabled && c.General.Profile.Address == "":
 			logger.Infof("Profiling enabled and General.Profile.Address unset, setting to %s", Defaults.General.Profile.Address)
@@ -363,14 +373,6 @@ func (c *TopLevel) completeInitialization(configDir string) {
 		case c.Kafka.Version == sarama.KafkaVersion{}:
 			logger.Infof("Kafka.Version unset, setting to %v", Defaults.Kafka.Version)
 			c.Kafka.Version = Defaults.Kafka.Version
-
-			//JCS: BFT-SMaRt parameters
-		case c.BFTsmart.ConnectionPoolSize == 0:
-			logger.Infof("BFTsmart.ConnectionPoolSize unset, setting to %v", Defaults.BFTsmart.ConnectionPoolSize)
-			c.BFTsmart.ConnectionPoolSize = Defaults.BFTsmart.ConnectionPoolSize
-		case c.BFTsmart.RecvPort == 0:
-			logger.Infof("BFTsmart.RecvPort unset, setting to %v", Defaults.BFTsmart.RecvPort)
-			c.BFTsmart.RecvPort = Defaults.BFTsmart.RecvPort
 
 		default:
 			return

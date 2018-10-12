@@ -8,21 +8,18 @@ package localconfig
 
 import (
 	"fmt"
-
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/common/viperutil"
-	logging "github.com/op/go-logging"
-
-	"github.com/spf13/viper"
-
-	"path/filepath"
-
 	cf "github.com/hyperledger/fabric/core/config"
 	"github.com/hyperledger/fabric/msp"
+	"github.com/hyperledger/fabric/protos/orderer/etcdraft"
+
+	"github.com/spf13/viper"
 )
 
 const (
@@ -32,17 +29,11 @@ const (
 	Prefix string = "CONFIGTX"
 )
 
-var (
-	logger *logging.Logger
-
-	configName string
-)
+var logger = flogging.MustGetLogger(pkgLogID)
+var configName = strings.ToLower(Prefix)
 
 func init() {
-	logger = flogging.MustGetLogger(pkgLogID)
 	flogging.SetModuleLevel(pkgLogID, "error")
-
-	configName = strings.ToLower(Prefix)
 }
 
 const (
@@ -60,15 +51,6 @@ const (
 	// only the sample MSP and uses solo for ordering.
 	SampleSingleMSPSoloProfile = "SampleSingleMSPSolo"
 
-	//JCS: my options
-	// SampleInsecureBFTsmartProfile references the sample profile which does not include any MSPs and uses BFT-SMaRt for ordering.
-	SampleInsecureBFTsmartProfile = "SampleInsecureBFTsmart"
-	// SampleDevModeBFTsmartProfile references the sample profile which requires
-	// only basic membership for admin privileges and uses BFT-SMaRt for ordering.
-	SampleDevModeBFTsmartProfile = "SampleDevModeBFTsmart"
-	// SampleSingleMSPBFTsmartProfile references the sample profile which includes only the sample MSP and uses BFT-SMaRt for ordering.
-	SampleSingleMSPBFTsmartProfile = "SampleSingleMSPBFTsmart"
-
 	// SampleInsecureKafkaProfile references the sample profile which does not
 	// include any MSPs and uses Kafka for ordering.
 	SampleInsecureKafkaProfile = "SampleInsecureKafka"
@@ -78,6 +60,10 @@ const (
 	// SampleSingleMSPKafkaProfile references the sample profile which includes
 	// only the sample MSP and uses Kafka for ordering.
 	SampleSingleMSPKafkaProfile = "SampleSingleMSPKafka"
+
+	// SampleDevModeEtcdRaftProfile references the sample profile used for testing
+	// the etcd/raft-based ordering service.
+	SampleDevModeEtcdRaftProfile = "SampleDevModeEtcdRaft"
 
 	// SampleSingleMSPChannelProfile references the sample profile which
 	// includes only the sample MSP and is used to create a channel
@@ -181,7 +167,7 @@ type Orderer struct {
 	BatchTimeout  time.Duration      `yaml:"BatchTimeout"`
 	BatchSize     BatchSize          `yaml:"BatchSize"`
 	Kafka         Kafka              `yaml:"Kafka"`
-	BFTsmart      BFTsmart           `yaml:"BFTsmart"` //JCS: my own options
+	EtcdRaft      *etcdraft.Metadata `yaml:"EtcdRaft"`
 	Organizations []*Organization    `yaml:"Organizations"`
 	MaxChannels   uint64             `yaml:"MaxChannels"`
 	Capabilities  map[string]bool    `yaml:"Capabilities"`
@@ -200,12 +186,6 @@ type Kafka struct {
 	Brokers []string `yaml:"Brokers"`
 }
 
-//JCS: BFTsmart contains config for the BFT-SMaRt orderer
-type BFTsmart struct {
-	ConnectionPoolSize uint
-	RecvPort           uint
-}
-
 var genesisDefaults = TopLevel{
 	Orderer: &Orderer{
 		OrdererType:  "solo",
@@ -218,10 +198,6 @@ var genesisDefaults = TopLevel{
 		},
 		Kafka: Kafka{
 			Brokers: []string{"127.0.0.1:9092"},
-		},
-		BFTsmart: BFTsmart{ //JCS: my own options
-			ConnectionPoolSize: 20,
-			RecvPort:           9999,
 		},
 	},
 }
@@ -322,17 +298,11 @@ func (t *TopLevel) completeInitialization(configDir string) {
 	}
 
 	if t.Orderer != nil {
-		t.Orderer.completeInitialization()
+		t.Orderer.completeInitialization(configDir)
 	}
 }
 
 func (p *Profile) completeInitialization(configDir string) {
-	if p.Orderer != nil {
-		for _, org := range p.Orderer.Organizations {
-			org.completeInitialization(configDir)
-		}
-	}
-
 	if p.Application != nil {
 		for _, org := range p.Application.Organizations {
 			org.completeInitialization(configDir)
@@ -350,9 +320,12 @@ func (p *Profile) completeInitialization(configDir string) {
 		}
 	}
 
-	// Some profiles will not define orderer parameters
 	if p.Orderer != nil {
-		p.Orderer.completeInitialization()
+		for _, org := range p.Orderer.Organizations {
+			org.completeInitialization(configDir)
+		}
+		// Some profiles will not define orderer parameters
+		p.Orderer.completeInitialization(configDir)
 	}
 }
 
@@ -379,38 +352,51 @@ func (org *Organization) completeInitialization(configDir string) {
 	translatePaths(configDir, org)
 }
 
-func (oc *Orderer) completeInitialization() {
+func (ord *Orderer) completeInitialization(configDir string) {
+loop:
 	for {
 		switch {
-		case oc.OrdererType == "":
-			logger.Infof("Orderer.OrdererType unset, setting to %s", genesisDefaults.Orderer.OrdererType)
-			oc.OrdererType = genesisDefaults.Orderer.OrdererType
-		case oc.Addresses == nil:
+		case ord.OrdererType == "":
+			logger.Infof("Orderer.OrdererType unset, setting to %v", genesisDefaults.Orderer.OrdererType)
+			ord.OrdererType = genesisDefaults.Orderer.OrdererType
+		case ord.Addresses == nil:
 			logger.Infof("Orderer.Addresses unset, setting to %s", genesisDefaults.Orderer.Addresses)
-			oc.Addresses = genesisDefaults.Orderer.Addresses
-		case oc.BatchTimeout == 0:
+			ord.Addresses = genesisDefaults.Orderer.Addresses
+		case ord.BatchTimeout == 0:
 			logger.Infof("Orderer.BatchTimeout unset, setting to %s", genesisDefaults.Orderer.BatchTimeout)
-			oc.BatchTimeout = genesisDefaults.Orderer.BatchTimeout
-		case oc.BatchSize.MaxMessageCount == 0:
-			logger.Infof("Orderer.BatchSize.MaxMessageCount unset, setting to %s", genesisDefaults.Orderer.BatchSize.MaxMessageCount)
-			oc.BatchSize.MaxMessageCount = genesisDefaults.Orderer.BatchSize.MaxMessageCount
-		case oc.BatchSize.AbsoluteMaxBytes == 0:
-			logger.Infof("Orderer.BatchSize.AbsoluteMaxBytes unset, setting to %s", genesisDefaults.Orderer.BatchSize.AbsoluteMaxBytes)
-			oc.BatchSize.AbsoluteMaxBytes = genesisDefaults.Orderer.BatchSize.AbsoluteMaxBytes
-		case oc.BatchSize.PreferredMaxBytes == 0:
-			logger.Infof("Orderer.BatchSize.PreferredMaxBytes unset, setting to %s", genesisDefaults.Orderer.BatchSize.PreferredMaxBytes)
-			oc.BatchSize.PreferredMaxBytes = genesisDefaults.Orderer.BatchSize.PreferredMaxBytes
-		case oc.Kafka.Brokers == nil:
-			logger.Infof("Orderer.Kafka.Brokers unset, setting to %v", genesisDefaults.Orderer.Kafka.Brokers)
-			oc.Kafka.Brokers = genesisDefaults.Orderer.Kafka.Brokers
-		case oc.BFTsmart.ConnectionPoolSize == 0: //JCS: my own options
-			logger.Infof("BFTsmart.ConnectionPoolSize unset, setting to %v", genesisDefaults.Orderer.BFTsmart.ConnectionPoolSize)
-			oc.BFTsmart.ConnectionPoolSize = genesisDefaults.Orderer.BFTsmart.ConnectionPoolSize
-		case oc.BFTsmart.RecvPort == 0: //JCS: my own options
-			logger.Infof("BFTsmart.RecvPort unset, setting to %v", genesisDefaults.Orderer.BFTsmart.RecvPort)
-			oc.BFTsmart.RecvPort = genesisDefaults.Orderer.BFTsmart.RecvPort
+			ord.BatchTimeout = genesisDefaults.Orderer.BatchTimeout
+		case ord.BatchSize.MaxMessageCount == 0:
+			logger.Infof("Orderer.BatchSize.MaxMessageCount unset, setting to %v", genesisDefaults.Orderer.BatchSize.MaxMessageCount)
+			ord.BatchSize.MaxMessageCount = genesisDefaults.Orderer.BatchSize.MaxMessageCount
+		case ord.BatchSize.AbsoluteMaxBytes == 0:
+			logger.Infof("Orderer.BatchSize.AbsoluteMaxBytes unset, setting to %v", genesisDefaults.Orderer.BatchSize.AbsoluteMaxBytes)
+			ord.BatchSize.AbsoluteMaxBytes = genesisDefaults.Orderer.BatchSize.AbsoluteMaxBytes
+		case ord.BatchSize.PreferredMaxBytes == 0:
+			logger.Infof("Orderer.BatchSize.PreferredMaxBytes unset, setting to %v", genesisDefaults.Orderer.BatchSize.PreferredMaxBytes)
+			ord.BatchSize.PreferredMaxBytes = genesisDefaults.Orderer.BatchSize.PreferredMaxBytes
 		default:
-			return
+			break loop
+		}
+	}
+
+	// Additional, consensus type-dependent initialization goes here
+	switch ord.OrdererType {
+	case "kafka":
+		if ord.Kafka.Brokers == nil {
+			logger.Infof("Orderer.Kafka unset, setting to %v", genesisDefaults.Orderer.Kafka.Brokers)
+			ord.Kafka.Brokers = genesisDefaults.Orderer.Kafka.Brokers
+		}
+	case etcdraft.TypeKey:
+		if ord.EtcdRaft == nil {
+			logger.Panicf("%s raft configuration missing", etcdraft.TypeKey)
+		}
+		for _, c := range ord.EtcdRaft.GetConsenters() {
+			clientCertPath := string(c.GetClientTlsCert())
+			cf.TranslatePathInPlace(configDir, &clientCertPath)
+			c.ClientTlsCert = []byte(clientCertPath)
+			serverCertPath := string(c.GetServerTlsCert())
+			cf.TranslatePathInPlace(configDir, &serverCertPath)
+			c.ServerTlsCert = []byte(serverCertPath)
 		}
 	}
 }

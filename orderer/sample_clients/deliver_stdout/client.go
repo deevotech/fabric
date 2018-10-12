@@ -4,12 +4,11 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"math"
 	"os"
-
-	util "github.com/hyperledger/fabric/common/util" //JCS import utils
 
 	"github.com/hyperledger/fabric/common/crypto"
 	"github.com/hyperledger/fabric/common/localmsp"
@@ -20,17 +19,10 @@ import (
 	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/hyperledger/fabric/protos/utils"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
 var (
-	verify         bool    = false                           //JCS: verify signatures?
-	blocksReceived int64   = 0                               //JCS: block counter and checker
-	N              int64   = 4                               //JCS: number of ordering nodes
-	F              int64   = 1                               //JCS: number of faults
-	Q              float64 = ((float64(N) + float64(F)) / 2) //JCS: quorum size
-
 	oldest  = &ab.SeekPosition{Type: &ab.SeekPosition_Oldest{Oldest: &ab.SeekOldest{}}}
 	newest  = &ab.SeekPosition{Type: &ab.SeekPosition_Newest{Newest: &ab.SeekNewest{}}}
 	maxStop = &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: math.MaxUint64}}}
@@ -85,38 +77,14 @@ func (r *deliverClient) readUntilClose() {
 			fmt.Println("Got status ", t)
 			return
 		case *ab.DeliverResponse_Block:
-
-			blocksReceived++ //JCS: block count
-
 			if !r.quiet {
 				fmt.Println("Received block: ")
 				err := protolator.DeepMarshalJSON(os.Stdout, t.Block)
 				if err != nil {
 					fmt.Printf("  Error pretty printing block: %s", err)
 				}
-
 			} else {
-
 				fmt.Println("Received block: ", t.Block.Header.Number)
-			}
-
-			if t.Block.Header.Number > 0 && verify { //JCS: check orderer signatures
-
-				meta, _ := utils.UnmarshalMetadata(t.Block.Metadata.Metadata[cb.BlockMetadataIndex_SIGNATURES])
-
-				// JCS: see what the bytes are and compare to proxy
-				fmt.Printf("Block #%d contains %d block signatures\n", t.Block.Header.Number, len(meta.Signatures))
-
-				validateSignatures(meta, t.Block)
-
-				meta, _ = utils.UnmarshalMetadata(t.Block.Metadata.Metadata[cb.BlockMetadataIndex_LAST_CONFIG])
-
-				// JCS: see what the bytes are and compare to proxy
-				fmt.Printf("Block #%d contains %d lastconfig signatures\n", t.Block.Header.Number, len(meta.Signatures))
-
-				validateSignatures(meta, t.Block)
-
-				fmt.Printf("Blocks received: %d\n", blocksReceived)
 			}
 		}
 	}
@@ -150,12 +118,6 @@ func main() {
 		"Acceptable values:"+
 		"-2 (or -1) to start from oldest (or newest) and keep at it indefinitely."+
 		"N >= 0 to fetch block N only.")
-
-	//JCS: my new flags
-	flag.Int64Var(&N, "n", N, "The total number of ordering nodes operating in the system.")
-	flag.Int64Var(&F, "f", F, "The number of Byzantine ordering nodes that are being tolerated.")
-	flag.BoolVar(&verify, "verify", verify, "Verify block signatures.")
-
 	flag.Parse()
 
 	if seek < -2 {
@@ -189,59 +151,4 @@ func main() {
 	}
 
 	s.readUntilClose()
-}
-
-func validateSignatures(meta *cb.Metadata, block *cb.Block) { //JCS: function to validate ordering nodes signatures
-
-	if block.Header.Number == 0 {
-		fmt.Printf("Block #0 requires no signature validation!\n")
-		return
-	}
-
-	des := mspmgmt.GetIdentityDeserializer("")
-	validSigs := int64(0)
-
-	for i, sig := range meta.Signatures {
-
-		bytes := util.ConcatenateBytes(meta.Value, sig.SignatureHeader, block.Header.Bytes())
-
-		sigHeader, err := utils.UnmarshalSignatureHeader(sig.SignatureHeader)
-		if err != nil {
-			fmt.Println("Signature Header Problem: ", err)
-			continue
-		}
-		ident, err := des.DeserializeIdentity(sigHeader.Creator)
-		if err != nil {
-			fmt.Println("Identity Problem: ", err)
-			continue
-		}
-
-		fmt.Printf("Signature: #%d\n", i)
-		fmt.Printf("MSPID: %s\n", ident.GetMSPIdentifier())
-		fmt.Printf("Bytes: %x\n", sig.Signature)
-
-		err = ident.Verify(bytes, sig.Signature)
-		if err != nil {
-			fmt.Printf("Sig verification problem: %s\n", err)
-			continue
-		}
-
-		validSigs++
-
-	}
-
-	switch {
-	case float64(validSigs) > Q:
-		{
-			fmt.Printf("Block #%d contains a quorum of valid signatures!\n", block.Header.Number)
-		}
-	case validSigs > F:
-		{
-			fmt.Printf("Block #%d contains enough valid signatures...\n", block.Header.Number)
-		}
-	default:
-		{
-			fmt.Printf("Block #%d does NOT contain enough valid signatures!\n", block.Header.Number)
-		}
-	}
 }
