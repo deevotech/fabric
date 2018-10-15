@@ -46,6 +46,9 @@ const (
 	// ConsensusTypeKafka identifies the Kafka-based consensus implementation.
 	ConsensusTypeKafka = "kafka"
 
+	//JCS: ConsensusTypeBFTsmart identifies the BFT-SMaRt consensus implementation.
+	ConsensusTypeBFTsmart = "bftsmart"
+
 	// BlockValidationPolicyKey TODO
 	BlockValidationPolicyKey = "BlockValidation"
 
@@ -219,6 +222,7 @@ func NewOrdererGroup(conf *genesisconfig.Orderer) (*cb.ConfigGroup, error) {
 	switch conf.OrdererType {
 	case ConsensusTypeSolo:
 	case ConsensusTypeKafka:
+	case ConsensusTypeBFTsmart: //JCS: added bftsmart type
 		addValue(ordererGroup, channelconfig.KafkaBrokersValue(conf.Kafka.Brokers), channelconfig.AdminsPolicyKey)
 	case etcdraft.TypeKey:
 		if consensusMetadata, err = etcdraft.Marshal(conf.EtcdRaft); err != nil {

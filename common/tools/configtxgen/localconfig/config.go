@@ -51,6 +51,15 @@ const (
 	// only the sample MSP and uses solo for ordering.
 	SampleSingleMSPSoloProfile = "SampleSingleMSPSolo"
 
+	//JCS: my options
+	// SampleInsecureBFTsmartProfile references the sample profile which does not include any MSPs and uses BFT-SMaRt for ordering.
+	SampleInsecureBFTsmartProfile = "SampleInsecureBFTsmart"
+	// SampleDevModeBFTsmartProfile references the sample profile which requires
+	// only basic membership for admin privileges and uses BFT-SMaRt for ordering.
+	SampleDevModeBFTsmartProfile = "SampleDevModeBFTsmart"
+	// SampleSingleMSPBFTsmartProfile references the sample profile which includes only the sample MSP and uses BFT-SMaRt for ordering.
+	SampleSingleMSPBFTsmartProfile = "SampleSingleMSPBFTsmart"
+
 	// SampleInsecureKafkaProfile references the sample profile which does not
 	// include any MSPs and uses Kafka for ordering.
 	SampleInsecureKafkaProfile = "SampleInsecureKafka"
@@ -167,6 +176,7 @@ type Orderer struct {
 	BatchTimeout  time.Duration      `yaml:"BatchTimeout"`
 	BatchSize     BatchSize          `yaml:"BatchSize"`
 	Kafka         Kafka              `yaml:"Kafka"`
+	BFTsmart      BFTsmart           `yaml:"BFTsmart"` //JCS: my own options
 	EtcdRaft      *etcdraft.Metadata `yaml:"EtcdRaft"`
 	Organizations []*Organization    `yaml:"Organizations"`
 	MaxChannels   uint64             `yaml:"MaxChannels"`
@@ -186,6 +196,12 @@ type Kafka struct {
 	Brokers []string `yaml:"Brokers"`
 }
 
+//JCS: BFTsmart contains config for the BFT-SMaRt orderer
+type BFTsmart struct {
+	ConnectionPoolSize uint
+	RecvPort           uint
+}
+
 var genesisDefaults = TopLevel{
 	Orderer: &Orderer{
 		OrdererType:  "solo",
@@ -198,6 +214,10 @@ var genesisDefaults = TopLevel{
 		},
 		Kafka: Kafka{
 			Brokers: []string{"127.0.0.1:9092"},
+		},
+		BFTsmart: BFTsmart{ //JCS: my own options
+			ConnectionPoolSize: 20,
+			RecvPort:           9999,
 		},
 	},
 }
@@ -386,6 +406,17 @@ loop:
 			logger.Infof("Orderer.Kafka unset, setting to %v", genesisDefaults.Orderer.Kafka.Brokers)
 			ord.Kafka.Brokers = genesisDefaults.Orderer.Kafka.Brokers
 		}
+	case "bftsmart": //JCS: my own options
+		if ord.BFTsmart.ConnectionPoolSize == 0 {
+			logger.Infof("Orderer.BFTsmart.ConnectionPoolSize unset, setting to %v", genesisDefaults.Orderer.BFTsmart.ConnectionPoolSize)
+			ord.BFTsmart.ConnectionPoolSize = genesisDefaults.Orderer.BFTsmart.ConnectionPoolSize
+		}
+
+		if ord.BFTsmart.RecvPort == 0 {
+			logger.Infof("Orderer.BFTsmart.RecvPort unset, setting to %v", genesisDefaults.Orderer.BFTsmart.RecvPort)
+			ord.BFTsmart.RecvPort = genesisDefaults.Orderer.BFTsmart.RecvPort
+		}
+
 	case etcdraft.TypeKey:
 		if ord.EtcdRaft == nil {
 			logger.Panicf("%s raft configuration missing", etcdraft.TypeKey)

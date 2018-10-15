@@ -33,6 +33,7 @@ type TopLevel struct {
 	FileLedger FileLedger
 	RAMLedger  RAMLedger
 	Kafka      Kafka
+	BFTsmart   BFTsmart //JCS my struct
 	Debug      Debug
 }
 
@@ -111,6 +112,12 @@ type Kafka struct {
 	TLS       TLS
 	SASLPlain SASLPlain
 	Topic     Topic
+}
+
+//JCS: BFTsmart contains configuration for the BFT-SMaRt orderer
+type BFTsmart struct {
+	ConnectionPoolSize uint
+	RecvPort           uint
 }
 
 // Retry contains configuration related to retries and timeouts when the
@@ -228,6 +235,11 @@ var Defaults = TopLevel{
 		Topic: Topic{
 			ReplicationFactor: 3,
 		},
+	},
+	BFTsmart: BFTsmart{ //JCS: my struct
+
+		ConnectionPoolSize: 20,
+		RecvPort:           9999,
 	},
 	Debug: Debug{
 		BroadcastTraceDir: "",
@@ -373,6 +385,14 @@ func (c *TopLevel) completeInitialization(configDir string) {
 		case c.Kafka.Version == sarama.KafkaVersion{}:
 			logger.Infof("Kafka.Version unset, setting to %v", Defaults.Kafka.Version)
 			c.Kafka.Version = Defaults.Kafka.Version
+
+			//JCS: BFT-SMaRt parameters
+		case c.BFTsmart.ConnectionPoolSize == 0:
+			logger.Infof("BFTsmart.ConnectionPoolSize unset, setting to %v", Defaults.BFTsmart.ConnectionPoolSize)
+			c.BFTsmart.ConnectionPoolSize = Defaults.BFTsmart.ConnectionPoolSize
+		case c.BFTsmart.RecvPort == 0:
+			logger.Infof("BFTsmart.RecvPort unset, setting to %v", Defaults.BFTsmart.RecvPort)
+			c.BFTsmart.RecvPort = Defaults.BFTsmart.RecvPort
 
 		default:
 			return

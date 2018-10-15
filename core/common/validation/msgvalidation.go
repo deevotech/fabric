@@ -388,18 +388,19 @@ func ValidateTransaction(e *common.Envelope, c channelconfig.ApplicationCapabili
 
 	putilsLogger.Debugf("Header is %s", payload.Header)
 
-	// validate the header
-	chdr, shdr, err := validateCommonHeader(payload.Header)
-	if err != nil {
-		putilsLogger.Errorf("validateCommonHeader returns err %s", err)
+	//JCS: Validate here only the channel header instead of also the signature header and creator signature (explanation below)
+	if payload.Header == nil {
 		return nil, pb.TxValidationCode_BAD_COMMON_HEADER
 	}
 
-	// validate the signature in the envelope
-	err = checkSignatureFromCreator(shdr.Creator, e.Signature, e.Payload, chdr.ChannelId)
+	chdr, err := utils.UnmarshalChannelHeader(payload.Header.ChannelHeader)
 	if err != nil {
-		putilsLogger.Errorf("checkSignatureFromCreator returns err %s", err)
-		return nil, pb.TxValidationCode_BAD_CREATOR_SIGNATURE
+		return nil, pb.TxValidationCode_BAD_COMMON_HEADER
+	}
+
+	err = validateChannelHeader(chdr)
+	if err != nil {
+		return nil, pb.TxValidationCode_BAD_COMMON_HEADER
 	}
 
 	// TODO: ensure that creator can transact with us (some ACLs?) which set of APIs is supposed to give us this info?
@@ -407,6 +408,33 @@ func ValidateTransaction(e *common.Envelope, c channelconfig.ApplicationCapabili
 	// continue the validation in a way that depends on the type specified in the header
 	switch common.HeaderType(chdr.Type) {
 	case common.HeaderType_ENDORSER_TRANSACTION:
+
+		//JCS: moved the verifications for the signature header and the creator signature from above to
+		//within this switch, so that verification is done only to regular envelopes. This was done because the
+		//bftsmart ordering service creates configuration envelopes at the ordering nodes, and these cannot sign the
+		//envelopes because otherwise they would produce different envelopes with different signatures that would not
+		//match up at the frontends. But since they arrive within blocks that are signed by a Byzantine majority of nodes
+		//(which are the ones that produce the config envelopes), it is safe to not perform header and signature verification
+		//for config envelopes.
+
+		//JCS: validate signature header
+		shdr, err := utils.GetSignatureHeader(payload.Header.SignatureHeader)
+		if err != nil {
+			return nil, pb.TxValidationCode_BAD_COMMON_HEADER
+		}
+
+		err = validateSignatureHeader(shdr)
+		if err != nil {
+			return nil, pb.TxValidationCode_BAD_COMMON_HEADER
+		}
+
+		//JCS: validate the signature in the envelope
+		err = checkSignatureFromCreator(shdr.Creator, e.Signature, e.Payload, chdr.ChannelId)
+		if err != nil {
+			putilsLogger.Errorf("checkSignatureFromCreator returns err %s", err)
+			return nil, pb.TxValidationCode_BAD_CREATOR_SIGNATURE
+		}
+
 		// Verify that the transaction ID has been computed properly.
 		// This check is needed to ensure that the lookup into the ledger
 		// for the same TxID catches duplicates.
