@@ -60,6 +60,13 @@ const (
 	// only the sample MSP and uses solo for ordering.
 	SampleSingleMSPSoloProfile = "SampleSingleMSPSolo"
 
+	// SampleDevModeSoloProfile references the sample profile which requires
+	// only basic membership for admin privileges and uses solo for ordering.
+	SampleSingleMSPDeevoconsensusProfile = "SampleSingleMSPDeevoconsensus"
+	// SampleSingleMSPSoloProfile references the sample profile which includes
+	// only the sample MSP and uses solo for ordering.
+	SampleDeevoSoloProfile = "SampleDeevoConsensus"
+
 	//JCS: my options
 	// SampleInsecureBFTsmartProfile references the sample profile which does not include any MSPs and uses BFT-SMaRt for ordering.
 	SampleInsecureBFTsmartProfile = "SampleInsecureBFTsmart"

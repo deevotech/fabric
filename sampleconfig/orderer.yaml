@@ -68,12 +68,12 @@ General:
     # GenesisMethod is set to "provisional". See the configtx.yaml file for the
     # descriptions of the available profiles. Ignored if GenesisMethod is set to
     # "file".
-    GenesisProfile: SampleDeevoConsensus
+    GenesisProfile: SampleSingleMSPDeevoconsensus
 
     # Genesis file: The file containing the genesis block to use when
     # initializing the orderer system channel and GenesisMethod is set to
     # "file". Ignored if GenesisMethod is set to "provisional".
-    GenesisFile: /opt/gopath/src/github.com/hyperledger/hyperledger/sampleconfig/genesis.block
+    GenesisFile: /opt/gopath/src/github.com/hyperledger/fabric/sampleconfig/genesis.block
 
     # LocalMSPDir is where to find the private crypto material needed by the
     # orderer. It is set relative here as a default for dev environments but

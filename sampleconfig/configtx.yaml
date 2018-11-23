@@ -350,6 +350,17 @@ Channel: &ChannelDefaults
 ################################################################################
 Profiles:
 
+    SampleSingleMSPDeevoconsensus:
+        <<: *ChannelDefaults
+        Orderer:
+            <<: *OrdererDefaults
+            OrdererType: deevoconsensus
+            Organizations:
+                - *SampleOrg
+        Consortiums:
+            SampleConsortium:
+                Organizations:
+                    - *SampleOrg
     # SampleSingleMSPSolo defines a configuration which uses the Solo orderer,
     # and contains a single MSP definition (the MSP sampleconfig).
     # The Consortium SampleConsortium has only a single member, SampleOrg.
@@ -466,6 +477,7 @@ Profiles:
         <<: *ChannelDefaults
         Orderer:
             <<: *OrdererDefaults
+            OrdererType: deevoconsensus
             Organizations:
                 - <<: *SampleOrg
                   Policies:
@@ -473,6 +485,24 @@ Profiles:
                       Admins:
                           Type: Signature
                           Rule: "OR('SampleOrg.member')"
+        Application:
+            <<: *ApplicationDefaults
+            Organizations:
+                - <<: *SampleOrg
+                  Policies:
+                      <<: *SampleOrgPolicies
+                      Admins:
+                          Type: Signature
+                          Rule: "OR('SampleOrg.member')"
+        Consortiums:
+            SampleConsortium:
+                Organizations:
+                    - <<: *SampleOrg
+                      Policies:
+                          <<: *SampleOrgPolicies
+                          Admins:
+                              Type: Signature
+                              Rule: "OR('SampleOrg.member')"
     # SampleDevModeKafka defines a configuration that differs from the
     # SampleDevModeSolo one only in that it uses the Kafka-based orderer.
     SampleDevModeKafka:
