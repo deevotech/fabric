@@ -40,6 +40,8 @@ func init() {
 }
 
 const (
+	// consensusdev
+	ConsensusTypeDeevoconsensus = "deevoconsensus"
 	// ConsensusTypeSolo identifies the solo consensus implementation.
 	ConsensusTypeSolo = "solo"
 	// ConsensusTypeKafka identifies the Kafka-based consensus implementation.
@@ -218,6 +220,7 @@ func NewOrdererGroup(conf *genesisconfig.Orderer) (*cb.ConfigGroup, error) {
 
 	switch conf.OrdererType {
 	case ConsensusTypeSolo:
+	case ConsensusTypeDeevoconsensus:
 	case ConsensusTypeKafka:
 	case ConsensusTypeBFTsmart: //JCS: added bftsmart type
 		addValue(ordererGroup, channelconfig.KafkaBrokersValue(conf.Kafka.Brokers), channelconfig.AdminsPolicyKey)

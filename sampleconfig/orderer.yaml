@@ -19,7 +19,7 @@ General:
     #  - json: A simple file ledger that writes blocks to disk in JSON format.
     # Only one production ledger type is provided:
     #  - file: A production file-based ledger.
-    LedgerType: ram
+    LedgerType: file
 
     # Listen address: The IP on which to bind to listen.
     ListenAddress: 0.0.0.0
@@ -68,12 +68,12 @@ General:
     # GenesisMethod is set to "provisional". See the configtx.yaml file for the
     # descriptions of the available profiles. Ignored if GenesisMethod is set to
     # "file".
-    GenesisProfile: SampleSingleMSPBFTsmart
+    GenesisProfile: SampleDeevoConsensus
 
     # Genesis file: The file containing the genesis block to use when
     # initializing the orderer system channel and GenesisMethod is set to
     # "file". Ignored if GenesisMethod is set to "provisional".
-    GenesisFile: /etc/bftsmart-orderer/config/genesisblock
+    GenesisFile: /opt/gopath/src/github.com/hyperledger/hyperledger/sampleconfig/genesis.block
 
     # LocalMSPDir is where to find the private crypto material needed by the
     # orderer. It is set relative here as a default for dev environments but

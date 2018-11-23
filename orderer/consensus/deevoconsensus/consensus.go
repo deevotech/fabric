@@ -36,15 +36,15 @@ type message struct {
 	configMsg *cb.Envelope
 }
 
-// New creates a new consenter for the solo consensus scheme.
-// The solo consensus scheme is very simple, and allows only one consenter for a given chain (this process).
+// New creates a new consenter for the deevoconsensus consensus scheme.
+// The deevoconsensus consensus scheme is very simple, and allows only one consenter for a given chain (this process).
 // It accepts messages being delivered via Order/Configure, orders them, and then uses the blockcutter to form the messages
 // into blocks before writing to the given ledger
 func New() consensus.Consenter {
 	return &consenter{}
 }
 
-func (solo *consenter) HandleChain(support consensus.ConsenterSupport, metadata *cb.Metadata) (consensus.Chain, error) {
+func (deevoconsensus *consenter) HandleChain(support consensus.ConsenterSupport, metadata *cb.Metadata) (consensus.Chain, error) {
 	return newChain(support), nil
 }
 
