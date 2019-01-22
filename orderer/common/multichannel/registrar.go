@@ -18,23 +18,22 @@ import (
 	"github.com/hyperledger/fabric/common/crypto"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blockledger"
+	"github.com/hyperledger/fabric/common/metrics"
+	"github.com/hyperledger/fabric/orderer/common/blockcutter"
 	"github.com/hyperledger/fabric/orderer/common/msgprocessor"
 	"github.com/hyperledger/fabric/orderer/consensus"
 	cb "github.com/hyperledger/fabric/protos/common"
 	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/hyperledger/fabric/protos/utils"
-
 	"github.com/pkg/errors"
 )
 
 const (
-	pkgLogID = "orderer/commmon/multichannel"
-
 	msgVersion = int32(0)
 	epoch      = 0
 )
 
-var logger = flogging.MustGetLogger(pkgLogID)
+var logger = flogging.MustGetLogger("orderer.commmon.multichannel")
 
 // checkResources makes sure that the channel config is compatible with this binary and logs sanity checks
 func checkResources(res channelconfig.Resources) error {
@@ -95,13 +94,14 @@ type Registrar struct {
 	lock   sync.RWMutex
 	chains map[string]*ChainSupport
 
-	consenters      map[string]consensus.Consenter
-	ledgerFactory   blockledger.Factory
-	signer          crypto.LocalSigner
-	systemChannelID string
-	systemChannel   *ChainSupport
-	templator       msgprocessor.ChannelConfigTemplator
-	callbacks       []func(bundle *channelconfig.Bundle)
+	consenters         map[string]consensus.Consenter
+	ledgerFactory      blockledger.Factory
+	signer             crypto.LocalSigner
+	blockcutterMetrics *blockcutter.Metrics
+	systemChannelID    string
+	systemChannel      *ChainSupport
+	templator          msgprocessor.ChannelConfigTemplator
+	callbacks          []func(bundle *channelconfig.Bundle)
 }
 
 func getConfigTx(reader blockledger.Reader) *cb.Envelope {
@@ -119,19 +119,24 @@ func getConfigTx(reader blockledger.Reader) *cb.Envelope {
 }
 
 // NewRegistrar produces an instance of a *Registrar.
-func NewRegistrar(ledgerFactory blockledger.Factory, consenters map[string]consensus.Consenter,
-	signer crypto.LocalSigner, callbacks ...func(bundle *channelconfig.Bundle)) *Registrar {
+func NewRegistrar(ledgerFactory blockledger.Factory,
+	signer crypto.LocalSigner, metricsProvider metrics.Provider, callbacks ...func(bundle *channelconfig.Bundle)) *Registrar {
 	r := &Registrar{
-		chains:        make(map[string]*ChainSupport),
-		ledgerFactory: ledgerFactory,
-		consenters:    consenters,
-		signer:        signer,
-		callbacks:     callbacks,
+		chains:             make(map[string]*ChainSupport),
+		ledgerFactory:      ledgerFactory,
+		signer:             signer,
+		blockcutterMetrics: blockcutter.NewMetrics(metricsProvider),
+		callbacks:          callbacks,
 	}
 
-	existingChains := ledgerFactory.ChainIDs()
+	return r
+}
+
+func (r *Registrar) Initialize(consenters map[string]consensus.Consenter) {
+	r.consenters = consenters
+	existingChains := r.ledgerFactory.ChainIDs()
 	for _, chainID := range existingChains {
-		rl, err := ledgerFactory.GetOrCreate(chainID)
+		rl, err := r.ledgerFactory.GetOrCreate(chainID)
 		if err != nil {
 			logger.Panicf("Ledger factory reported chainID %s but could not retrieve it: %s", chainID, err)
 		}
@@ -149,8 +154,9 @@ func NewRegistrar(ledgerFactory blockledger.Factory, consenters map[string]conse
 			chain := newChainSupport(
 				r,
 				ledgerResources,
-				consenters,
-				signer)
+				r.consenters,
+				r.signer,
+				r.blockcutterMetrics)
 			r.templator = msgprocessor.NewDefaultTemplator(chain)
 			chain.Processor = msgprocessor.NewSystemChannel(chain, r.templator, msgprocessor.CreateSystemChannelFilters(r, chain))
 
@@ -176,8 +182,9 @@ func NewRegistrar(ledgerFactory blockledger.Factory, consenters map[string]conse
 			chain := newChainSupport(
 				r,
 				ledgerResources,
-				consenters,
-				signer)
+				r.consenters,
+				r.signer,
+				r.blockcutterMetrics)
 			r.chains[chainID] = chain
 			chain.start()
 		}
@@ -187,8 +194,6 @@ func NewRegistrar(ledgerFactory blockledger.Factory, consenters map[string]conse
 	if r.systemChannelID == "" {
 		logger.Panicf("No system chain found.  If bootstrapping, does your system channel contain a consortiums group definition?")
 	}
-
-	return r
 }
 
 // SystemChannelID returns the ChannelID for the system channel.
@@ -205,8 +210,8 @@ func (r *Registrar) BroadcastChannelSupport(msg *cb.Envelope) (*cb.ChannelHeader
 		return nil, false, nil, fmt.Errorf("could not determine channel ID: %s", err)
 	}
 
-	cs, ok := r.GetChain(chdr.ChannelId)
-	if !ok {
+	cs := r.GetChain(chdr.ChannelId)
+	if cs == nil {
 		cs = r.systemChannel
 	}
 
@@ -222,13 +227,12 @@ func (r *Registrar) BroadcastChannelSupport(msg *cb.Envelope) (*cb.ChannelHeader
 	return chdr, isConfig, cs, nil
 }
 
-// GetChain retrieves the chain support for a chain (and whether it exists)
-func (r *Registrar) GetChain(chainID string) (*ChainSupport, bool) {
+// GetChain retrieves the chain support for a chain if it exists
+func (r *Registrar) GetChain(chainID string) *ChainSupport {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 
-	cs, ok := r.chains[chainID]
-	return cs, ok
+	return r.chains[chainID]
 }
 
 func (r *Registrar) newLedgerResources(configTx *cb.Envelope) *ledgerResources {
@@ -284,7 +288,7 @@ func (r *Registrar) newChain(configtx *cb.Envelope) {
 		newChains[key] = value
 	}
 
-	cs := newChainSupport(r, ledgerResources, r.consenters, r.signer)
+	cs := newChainSupport(r, ledgerResources, r.consenters, r.signer, r.blockcutterMetrics)
 	chainID := ledgerResources.ConfigtxValidator().ChainID()
 
 	logger.Infof("Created and starting new chain %s", chainID)

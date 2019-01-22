@@ -11,16 +11,14 @@ import (
 	"io/ioutil"
 	"os"
 	"syscall"
-	"time"
-
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/gbytes"
-	"github.com/onsi/gomega/gexec"
 
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/hyperledger/fabric/integration/nwo"
 	"github.com/hyperledger/fabric/integration/nwo/commands"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gbytes"
+	"github.com/onsi/gomega/gexec"
 	"github.com/tedsuo/ifrit"
 	yaml "gopkg.in/yaml.v2"
 )
@@ -70,7 +68,7 @@ var _ = Describe("Network", func() {
 		AfterEach(func() {
 			// Shutodwn processes and cleanup
 			process.Signal(syscall.SIGTERM)
-			Eventually(process.Wait(), time.Minute).Should(Receive())
+			Eventually(process.Wait(), network.EventuallyTimeout).Should(Receive())
 			network.Cleanup()
 		})
 
@@ -120,7 +118,7 @@ var _ = Describe("Network", func() {
 		AfterEach(func() {
 			for _, p := range processes {
 				p.Signal(syscall.SIGTERM)
-				Eventually(p.Wait(), time.Minute).Should(Receive())
+				Eventually(p.Wait(), network.EventuallyTimeout).Should(Receive())
 			}
 			network.Cleanup()
 		})

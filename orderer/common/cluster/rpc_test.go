@@ -48,7 +48,7 @@ func TestRPCStep(t *testing.T) {
 	} {
 		testcase := testcase
 		t.Run(testcase.name, func(t *testing.T) {
-			comm := &mocks.RemoteCommunicator{}
+			comm := &mocks.Communicator{}
 			client := &mocks.ClusterClient{}
 			client.On("Step", mock.Anything, mock.Anything).Return(testcase.stepReturns...)
 			comm.On("Remote", "mychannel", uint64(1)).Return(&cluster.RemoteContext{
@@ -56,8 +56,9 @@ func TestRPCStep(t *testing.T) {
 			}, testcase.remoteErr)
 
 			rpc := &cluster.RPC{
-				Channel: "mychannel",
-				Comm:    comm,
+				DestinationToStream: make(map[uint64]orderer.Cluster_SubmitClient),
+				Channel:             "mychannel",
+				Comm:                comm,
 			}
 
 			response, err := rpc.Step(1, &orderer.StepRequest{
@@ -74,12 +75,50 @@ func TestRPCStep(t *testing.T) {
 	}
 }
 
+func TestRPCChangeDestination(t *testing.T) {
+	t.Parallel()
+	// We send a Submit() to 2 different nodes - 1 and 2.
+	// The first invocation of Submit() establishes a stream with node 1
+	// and the second establishes a stream with node 2.
+	// We define a mock behavior for only a single invocation of Send() on each
+	// of the streams (to node 1 and to node 2), therefore we test that invocation
+	// of rpc.SendSubmit to node 2 doesn't send the message to node 1.
+	comm := &mocks.Communicator{}
+
+	client1 := &mocks.ClusterClient{}
+	client2 := &mocks.ClusterClient{}
+
+	comm.On("Remote", "mychannel", uint64(1)).Return(&cluster.RemoteContext{Client: client1}, nil)
+	comm.On("Remote", "mychannel", uint64(2)).Return(&cluster.RemoteContext{Client: client2}, nil)
+
+	streamToNode1 := &mocks.SubmitClient{}
+	streamToNode2 := &mocks.SubmitClient{}
+
+	client1.On("Submit", mock.Anything).Return(streamToNode1, nil).Once()
+	client2.On("Submit", mock.Anything).Return(streamToNode2, nil).Once()
+
+	rpc := &cluster.RPC{
+		DestinationToStream: make(map[uint64]orderer.Cluster_SubmitClient),
+		Channel:             "mychannel",
+		Comm:                comm,
+	}
+
+	streamToNode1.On("Send", mock.Anything).Return(nil).Once()
+	streamToNode2.On("Send", mock.Anything).Return(nil).Once()
+
+	rpc.SendSubmit(1, &orderer.SubmitRequest{Channel: "mychannel"})
+	rpc.SendSubmit(2, &orderer.SubmitRequest{Channel: "mychannel"})
+
+	streamToNode1.AssertNumberOfCalls(t, "Send", 1)
+	streamToNode2.AssertNumberOfCalls(t, "Send", 1)
+}
+
 func TestRPCSubmitSend(t *testing.T) {
 	t.Parallel()
 	submitRequest := &orderer.SubmitRequest{Channel: "mychannel"}
 	submitResponse := &orderer.SubmitResponse{Status: common.Status_SUCCESS}
 
-	comm := &mocks.RemoteCommunicator{}
+	comm := &mocks.Communicator{}
 	stream := &mocks.SubmitClient{}
 	client := &mocks.ClusterClient{}
 
@@ -149,8 +188,9 @@ func TestRPCSubmitSend(t *testing.T) {
 			}, testCase.remoteError)
 
 			rpc := &cluster.RPC{
-				Channel: "mychannel",
-				Comm:    comm,
+				DestinationToStream: make(map[uint64]orderer.Cluster_SubmitClient),
+				Channel:             "mychannel",
+				Comm:                comm,
 			}
 
 			var msg *orderer.SubmitResponse

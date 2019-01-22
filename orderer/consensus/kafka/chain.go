@@ -48,9 +48,6 @@ func newChain(
 	logger.Infof("[channel: %s] Starting chain with last persisted offset %d and last recorded block %d",
 		support.ChainID(), lastOffsetPersisted, lastCutBlockNumber)
 
-	errorChan := make(chan struct{})
-	close(errorChan) // We need this closed when starting up
-
 	doneReprocessingMsgInFlight := make(chan struct{})
 	// In either one of following cases, we should unblock ingress messages:
 	// - lastResubmittedConfigOffset == 0, where we've never resubmitted any config messages
@@ -73,7 +70,6 @@ func newChain(
 		lastResubmittedConfigOffset: lastResubmittedConfigOffset,
 		lastCutBlockNumber:          lastCutBlockNumber,
 
-		errorChan:                   errorChan,
 		haltChan:                    make(chan struct{}),
 		startChan:                   make(chan struct{}),
 		doneReprocessingMsgInFlight: doneReprocessingMsgInFlight,
@@ -117,7 +113,15 @@ type chainImpl struct {
 // Errored returns a channel which will close when a partition consumer error
 // has occurred. Checked by Deliver().
 func (chain *chainImpl) Errored() <-chan struct{} {
-	return chain.errorChan
+	select {
+	case <-chain.startChan:
+		return chain.errorChan
+	default:
+		// While the consenter is starting, always return an error
+		dummyError := make(chan struct{})
+		close(dummyError)
+		return dummyError
+	}
 }
 
 // Start allocates the necessary resources for staying up to date with this
@@ -168,7 +172,7 @@ func (chain *chainImpl) WaitReady() error {
 			return nil
 		}
 	default: // Not ready yet
-		return fmt.Errorf("will not enqueue, consenter for this channel hasn't started yet")
+		return fmt.Errorf("backing Kafka cluster has not completed booting; try again later")
 	}
 }
 
@@ -291,8 +295,8 @@ func startThread(chain *chainImpl) {
 
 	chain.doneProcessingMessagesToBlocks = make(chan struct{})
 
-	close(chain.startChan)                // Broadcast requests will now go through
 	chain.errorChan = make(chan struct{}) // Deliver requests will also go through
+	close(chain.startChan)                // Broadcast requests will now go through
 
 	logger.Infof("[channel: %s] Start phase completed successfully", chain.channel.topic())
 

@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/core/comm"
 	"github.com/hyperledger/fabric/protos/orderer"
-	"github.com/op/go-logging"
 	"github.com/pkg/errors"
 )
 
@@ -58,6 +58,8 @@ func (rm RemoteNode) String() string {
 		rm.ID, rm.Endpoint, DERtoPEM(rm.ServerTLSCert), DERtoPEM(rm.ClientTLSCert))
 }
 
+//go:generate mockery -dir . -name Communicator -case underscore -output ./mocks/
+
 // Communicator defines communication for a consenter
 type Communicator interface {
 	// Remote returns a RemoteContext for the given RemoteNode ID in the context
@@ -67,7 +69,7 @@ type Communicator interface {
 	// Configure configures the communication to connect to all
 	// given members, and disconnect from any members not among the given
 	// members.
-	Configure(channel string, members []*RemoteNode)
+	Configure(channel string, members []RemoteNode)
 	// Shutdown shuts down the communicator
 	Shutdown()
 }
@@ -80,7 +82,7 @@ type MembersByChannel map[string]MemberMapping
 type Comm struct {
 	shutdown     bool
 	Lock         sync.RWMutex
-	Logger       *logging.Logger
+	Logger       *flogging.FabricLogger
 	ChanExt      ChannelExtractor
 	H            Handler
 	Connections  *ConnectionStore
@@ -404,6 +406,7 @@ func (rc *RemoteContext) SubmitStream() (orderer.Cluster_SubmitClient, error) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	submitStream, err := rc.Client.Submit(ctx)
 	if err != nil {
+		cancel()
 		return nil, errors.WithStack(err)
 	}
 	rc.submitStream = submitStream
