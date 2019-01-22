@@ -388,10 +388,6 @@ func ValidateTransaction(e *common.Envelope, c channelconfig.ApplicationCapabili
 
 	putilsLogger.Debugf("Header is %s", payload.Header)
 
-	// TODO: ensure that creator can transact with us (some ACLs?) which set of APIs is supposed to give us this info?
-
-	// continue the validation in a way that depends on the type specified in the header
-
 	//JCS: Validate here only the channel header instead of also the signature header and creator signature (explanation below)
 	if payload.Header == nil {
 		return nil, pb.TxValidationCode_BAD_COMMON_HEADER
@@ -407,6 +403,9 @@ func ValidateTransaction(e *common.Envelope, c channelconfig.ApplicationCapabili
 		return nil, pb.TxValidationCode_BAD_COMMON_HEADER
 	}
 
+	// TODO: ensure that creator can transact with us (some ACLs?) which set of APIs is supposed to give us this info?
+
+	// continue the validation in a way that depends on the type specified in the header
 	switch common.HeaderType(chdr.Type) {
 	case common.HeaderType_ENDORSER_TRANSACTION:
 

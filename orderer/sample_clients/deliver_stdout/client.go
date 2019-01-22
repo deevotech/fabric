@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"math"
@@ -20,7 +21,6 @@ import (
 	ab "github.com/hyperledger/fabric/protos/orderer"
 	"github.com/hyperledger/fabric/protos/utils"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
@@ -94,9 +94,7 @@ func (r *deliverClient) readUntilClose() {
 				if err != nil {
 					fmt.Printf("  Error pretty printing block: %s", err)
 				}
-
 			} else {
-
 				fmt.Println("Received block: ", t.Block.Header.Number)
 			}
 
