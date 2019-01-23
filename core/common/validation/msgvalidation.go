@@ -471,6 +471,24 @@ func ValidateTransaction(e *common.Envelope, c channelconfig.ApplicationCapabili
 			return payload, pb.TxValidationCode_VALID
 		}
 	case common.HeaderType_TOKEN_TRANSACTION:
+		//DEEVO: validate signature header. The reason is above.
+		shdr, err := utils.GetSignatureHeader(payload.Header.SignatureHeader)
+		if err != nil {
+			return nil, pb.TxValidationCode_BAD_COMMON_HEADER
+		}
+
+		err = validateSignatureHeader(shdr)
+		if err != nil {
+			return nil, pb.TxValidationCode_BAD_COMMON_HEADER
+		}
+
+		//DEEVO: validate the signature in the envelope
+		err = checkSignatureFromCreator(shdr.Creator, e.Signature, e.Payload, chdr.ChannelId)
+		if err != nil {
+			putilsLogger.Errorf("checkSignatureFromCreator returns err %s", err)
+			return nil, pb.TxValidationCode_BAD_CREATOR_SIGNATURE
+		}
+
 		// Verify that the transaction ID has been computed properly.
 		// This check is needed to ensure that the lookup into the ledger
 		// for the same TxID catches duplicates.
