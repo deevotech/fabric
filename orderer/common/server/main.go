@@ -42,6 +42,7 @@ import (
 	"github.com/hyperledger/fabric/orderer/common/metadata"
 	"github.com/hyperledger/fabric/orderer/common/multichannel"
 	"github.com/hyperledger/fabric/orderer/consensus"
+	"github.com/hyperledger/fabric/orderer/consensus/bftsmart"
 	"github.com/hyperledger/fabric/orderer/consensus/etcdraft"
 	"github.com/hyperledger/fabric/orderer/consensus/kafka"
 	"github.com/hyperledger/fabric/orderer/consensus/solo"
@@ -50,7 +51,7 @@ import (
 	"github.com/hyperledger/fabric/protos/utils"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
-	"gopkg.in/alecthomas/kingpin.v2"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var logger = flogging.MustGetLogger("orderer.common.server")
@@ -405,6 +406,8 @@ func initializeMultichannelRegistrar(bootstrapBlock *cb.Block,
 	registrar := multichannel.NewRegistrar(lf, signer, metricsProvider, callbacks...)
 
 	consenters["solo"] = solo.New()
+	consenters["bftsmart"] = bftsmart.New(conf.BFTsmart)
+
 	var kafkaMetrics *kafka.Metrics
 	consenters["kafka"], kafkaMetrics = kafka.New(conf.Kafka, metricsProvider)
 	// Note, we pass a 'nil' channel here, we could pass a channel that
